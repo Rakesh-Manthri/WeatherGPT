@@ -30,8 +30,8 @@ class WeatherAIAgent:
     def __init__(self, gemini_api_key: str):
         self.client = genai.Client(api_key=gemini_api_key)
         self.tools = [get_current_weather, get_weather_forecast, get_weather_alerts]
-        self.primary_model = 'gemini-2.5-flash'
-        self.fallback_model = 'gemini-2.0-flash'
+        self.primary_model = 'gemini-3.5-flash-lite'
+        self.fallback_model = 'gemini-3.5-flash'
         
         self.chat = self._create_chat(self.primary_model)
 
