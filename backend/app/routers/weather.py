@@ -1,26 +1,30 @@
-from fastapi import APIRouter, Depends, HTTPException
-from typing import Optional
+from fastapi import APIRouter
+from ..services.weather_service import weather_service
 
 router = APIRouter()
 
 @router.get("/current")
 async def get_current_weather(lat: float, lon: float):
-    # TODO: Connect to WeatherNext 3 API via weather_service
+    data = weather_service.get_structured_weather_data(lat, lon)
     return {
         "location": {"lat": lat, "lon": lon},
-        "temperature_c": 28.5,
-        "condition": "Partly Cloudy",
-        "humidity": 65,
-        "wind_kph": 12.0
+        "temperature_c": data["temperature"],
+        "apparent_temperature_c": data["apparent_temperature"],
+        "condition": data["condition"],
+        "humidity": data["humidity"],
+        "wind_kph": data["wind_speed"],
+        "rain_chance": data["rain_chance"],
+        "aqi": data["aqi"],
     }
 
 @router.get("/forecast")
 async def get_forecast(lat: float, lon: float, days: int = 7):
-    # TODO: Connect to WeatherNext 3 API
+    data = weather_service.get_structured_weather_data(lat, lon)
     return {
         "location": {"lat": lat, "lon": lon},
+        "current": data,
+        "hourly": data["hourly"],
         "forecast": [
-            {"day": "Today", "max_temp": 30, "min_temp": 22, "condition": "Sunny"},
-            {"day": "Tomorrow", "max_temp": 29, "min_temp": 21, "condition": "Rain"}
+            {"day": "Today", "max_temp": data["temp_max"], "min_temp": data["temp_min"], "condition": data["condition"]},
         ]
     }

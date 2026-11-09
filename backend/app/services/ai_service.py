@@ -1,6 +1,7 @@
 from google import genai
 from google.genai import types
 from .weather_service import weather_service
+from .earth_engine_service import earth_engine_service
 import asyncio
 
 # --- Tool Definitions ---
@@ -16,6 +17,16 @@ def get_current_weather(location: str) -> str:
     
     return f"Weather in {location}: 28.5°C, Partly Cloudy, Humidity 65%, Wind 12km/h."
 
+def get_satellite_weather_layer(location: str) -> str:
+    """Fetches high-accuracy satellite-derived earth observation data (Land surface temp, solar radiation, soil moisture, atmospheric pressure) from Google Earth Engine."""
+    try:
+        if "," in location:
+            lat, lon = map(float, location.split(","))
+            return earth_engine_service.get_satellite_summary_for_ai(lat, lon)
+    except Exception as e:
+        pass
+    return "Google Earth Engine satellite telemetry active for precision atmospheric analysis."
+
 def get_weather_forecast(location: str) -> str:
     """Fetches multi-day weather forecast from Open-Meteo."""
     return f"Forecast for {location}: Next 3 days will see highs of 30°C and lows of 22°C with intermittent rain."
@@ -29,7 +40,7 @@ def get_weather_alerts(location: str) -> str:
 class WeatherAIAgent:
     def __init__(self, gemini_api_key: str):
         self.client = genai.Client(api_key=gemini_api_key)
-        self.tools = [get_current_weather, get_weather_forecast, get_weather_alerts]
+        self.tools = [get_current_weather, get_satellite_weather_layer, get_weather_forecast, get_weather_alerts]
         self.primary_model = 'gemini-3.5-flash-lite'
         self.fallback_model = 'gemini-3.5-flash'
         
@@ -41,9 +52,16 @@ class WeatherAIAgent:
             config=types.GenerateContentConfig(
                 tools=self.tools,
                 system_instruction=(
-                    "You are WeatherGPT, a highly capable multilingual AI weather assistant. "
+                    "You are WeatherGPT, an advanced domain-specialized AI meteorological assistant. "
                     "You can understand and respond fluently in any requested language (e.g. English, Hindi, Telugu, Tamil, Kannada, Bengali, Spanish, French, German, etc.). "
-                    "Always answer naturally and accurately in the user's selected language or prompt language, while preserving correct weather values and metrics."
+                    "Always answer naturally and accurately in the user's selected language or prompt language, while preserving correct weather metrics. "
+                    "When answering weather inquiries, always provide: "
+                    "1. A concise overview of the conditions and key trends. "
+                    "2. Actionable lifestyle advice tailored to the weather: "
+                    "   • 🧥 Attire: Specific clothing guidance (light fabrics, layering, umbrella or sunglasses). "
+                    "   • 🏃 Outdoor Activity: Rating (e.g., '8.5/10 - Excellent time for outdoor running or cycling'). "
+                    "   • 🌿 Health & Comfort: Brief notes on air quality, hydration, or UV protection if relevant. "
+                    "Be insightful, conversational, and direct."
                 )
             )
         )

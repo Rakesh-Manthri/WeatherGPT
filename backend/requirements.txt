@@ -8,3 +8,5 @@ supabase>=2.3.0
 google-genai>=2.0.0
 python-dotenv>=1.0.0
 nest_asyncio>=1.6.0
+google-auth>=2.27.0
+earthengine-api>=1.7.50

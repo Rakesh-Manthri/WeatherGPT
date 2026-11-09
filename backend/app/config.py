@@ -6,6 +6,8 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_KEY: str = ""
     WEATHERNEXT_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
+    GOOGLE_SERVICE_ACCOUNT_FILE: str = "service_account.json"
+    GOOGLE_CLOUD_PROJECT: str = "weathergpt-509714"
     PORT: int = 8000
     ENVIRONMENT: str = "production"
     CORS_ORIGINS: str = "*"
