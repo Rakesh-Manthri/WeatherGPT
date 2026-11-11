@@ -87,6 +87,8 @@ class _WeatherCardBubbleState extends State<WeatherCardBubble> {
     final lon = (data['longitude'] as num?)?.toDouble() ?? 77.2090;
 
     final hourlyList = (data['hourly'] as List<dynamic>?) ?? [];
+    final spatialDownscaling =
+        data['spatial_downscaling'] as Map<String, dynamic>?;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -352,6 +354,12 @@ class _WeatherCardBubbleState extends State<WeatherCardBubble> {
             ),
           ),
 
+          // Hyper-Local 1km Spatial Downscaling Pill (if active)
+          if (spatialDownscaling != null) ...[
+            const SizedBox(height: 8),
+            _buildDownscalingStrip(spatialDownscaling),
+          ],
+
           const SizedBox(height: 12),
 
           // GIS Map Action Button ("Explore on GIS Map")
@@ -461,6 +469,74 @@ class _WeatherCardBubbleState extends State<WeatherCardBubble> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildDownscalingStrip(Map<String, dynamic> ds) {
+    final zone = (ds['microclimate_zone'] ?? '1km Microclimate').toString();
+    final netDelta = (ds['net_temperature_delta_c'] as num?)?.toDouble() ?? 0.0;
+    final terrain = ds['terrain_profile'] as Map<String, dynamic>?;
+    final adjustments = ds['adjustments'] as Map<String, dynamic>?;
+    final elevM = (terrain?['local_elevation_m'] as num?)?.round();
+    final districtBias =
+        (adjustments?['district_orographic_bias_c'] as num?)?.toDouble() ?? 0.0;
+
+    final deltaSign = netDelta >= 0 ? '+' : '';
+    final deltaText = '$deltaSign${netDelta.toStringAsFixed(1)}°C local';
+    final extraNote = districtBias.abs() >= 0.8
+        ? ' • ${districtBias >= 0 ? '+' : ''}${districtBias.toStringAsFixed(1)}°C vs 25km'
+        : '';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF7F7F7),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFEAEAEA)),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.terrain_rounded,
+              size: 14,
+              color: Color(0xFF1C1C1E),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                elevM != null
+                    ? '1km Cell • $zone (${elevM}m)'
+                    : '1km Cell • $zone',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF444444),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1C1C1E),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '$deltaText$extraNote',
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
