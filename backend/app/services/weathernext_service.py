@@ -44,10 +44,16 @@ class WeatherNextService:
                 if candidate.exists():
                     key_path = str(candidate)
 
+            self._key_path = key_path  # kept for ADC env-var injection
+
             self._credentials = service_account.Credentials.from_service_account_file(
                 key_path,
                 scopes=["https://www.googleapis.com/auth/cloud-platform"],
             )
+            # Inject as ADC so obstore picks up the same identity automatically
+            # (obstore uses its own Rust-based token refresh, not google-auth-library)
+            os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", key_path)
+
             self.is_initialized = True
             logger.info("WeatherNext 3: service account credentials loaded.")
         except Exception as exc:
@@ -100,17 +106,15 @@ class WeatherNextService:
             import xarray as xr
 
             prefix = self._get_latest_init_path()
-            token = self._get_access_token()
 
-            # Build the GCS store with Requester-Pays billing header
+            # Reference notebook pattern: let obstore auto-discover ADC credentials
+            # (GOOGLE_APPLICATION_CREDENTIALS env var set in _init_credentials)
+            # Only the Requester-Pays billing header is needed explicitly.
             gcs_store = obstore.store.GCSStore(
                 bucket=self.BUCKET,
                 prefix=prefix,
                 client_options={
-                    "default_headers": {
-                        "x-goog-user-project": self.PROJECT_ID,
-                        "Authorization": f"Bearer {token}",
-                    }
+                    "default_headers": {"x-goog-user-project": self.PROJECT_ID}
                 },
             )
 
