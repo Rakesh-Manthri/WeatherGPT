@@ -3,6 +3,7 @@ from google.genai import types
 from .weather_service import weather_service
 from .earth_engine_service import earth_engine_service
 from .weathernext_service import weathernext_service
+from .spatial_downscaling import spatial_downscaling_engine
 import asyncio
 
 # --- Tool Definitions ---
@@ -55,12 +56,39 @@ def get_weathernext_forecast(location: str) -> str:
         "Provide coordinates as 'lat,lon' for a precise forecast."
     )
 
+def get_hyperlocal_downscaled_forecast(location: str) -> str:
+    """
+    Fetches 1-2 km hyper-local spatially downscaled meteorological telemetry
+    computed from 30m SRTM elevation lapse rates (-6.5 C/km), ESA WorldCover
+    Urban Heat Island (UHI) & canopy cooling, coastal moderation, and terrain slope/aspect.
+    Input: 'latitude,longitude' (e.g. '31.1048,77.1734').
+    """
+    try:
+        if "," in location:
+            parts = [p.strip() for p in location.split(",")[:2]]
+            lat, lon = float(parts[0]), float(parts[1])
+            data = weather_service.get_structured_weather_data(lat, lon)
+            return spatial_downscaling_engine.format_for_ai(data.get("spatial_downscaling"))
+    except Exception:
+        pass
+    return (
+        "Hyper-local spatial downscaling engine is active. "
+        "Provide coordinates as 'lat,lon' for 1km microclimate adjustments."
+    )
+
 # --- Agent Setup ---
 
 class WeatherAIAgent:
     def __init__(self, gemini_api_key: str):
         self.client = genai.Client(api_key=gemini_api_key)
-        self.tools = [get_current_weather, get_satellite_weather_layer, get_weather_forecast, get_weather_alerts, get_weathernext_forecast]
+        self.tools = [
+            get_current_weather,
+            get_satellite_weather_layer,
+            get_weather_forecast,
+            get_weather_alerts,
+            get_weathernext_forecast,
+            get_hyperlocal_downscaled_forecast,
+        ]
         self.primary_model = 'gemini-3.5-flash-lite'
         self.fallback_model = 'gemini-3.5-flash'
         
@@ -72,9 +100,11 @@ class WeatherAIAgent:
             config=types.GenerateContentConfig(
                 tools=self.tools,
                 system_instruction=(
-                    "You are WeatherGPT, an advanced domain-specialized AI meteorological assistant. "
+                    "You are WeatherGPT, an advanced domain-specialized AI meteorological assistant "
+                    "powered by hyper-local 1km Spatial Downscaling (SRTM elevation + ESA WorldCover UHI/canopy + coastal moderation). "
                     "You can understand and respond fluently in any requested language (e.g. English, Hindi, Telugu, Tamil, Kannada, Bengali, Spanish, French, German, etc.). "
                     "Always answer naturally and accurately in the user's selected language or prompt language, while preserving correct weather metrics. "
+                    "When spatial downscaling context is provided, briefly highlight the hyper-local microclimate factors (such as elevation temperature offset, urban heat island, or coastal breeze) that distinguish the user's exact location from city-wide forecasts. "
                     "When answering weather inquiries, always provide: "
                     "1. A concise overview of the conditions and key trends. "
                     "2. Actionable lifestyle advice tailored to the weather: "

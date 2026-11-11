@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from ..services import ai_service
 from ..services.weather_service import weather_service
+from ..services.spatial_downscaling import spatial_downscaling_engine
 
 router = APIRouter()
 
@@ -39,6 +40,10 @@ async def chat_completions(req: ChatRequest):
                 f"Humidity={structured_weather['humidity']}%, Wind={structured_weather['wind_speed']}km/h, "
                 f"RainChance={structured_weather['rain_chance']}%, AQI={structured_weather['aqi']}] "
             )
+            if structured_weather.get("spatial_downscaling"):
+                context_prefix += (
+                    f"[{spatial_downscaling_engine.format_for_ai(structured_weather['spatial_downscaling'])}] "
+                )
         except Exception as e:
             print(f"Error fetching telemetry: {e}")
 

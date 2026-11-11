@@ -4,6 +4,7 @@ from typing import Dict, Any, List
 from datetime import datetime
 from .earth_engine_service import earth_engine_service
 from .weathernext_service import weathernext_service
+from .spatial_downscaling import spatial_downscaling_engine
 
 logger = logging.getLogger(__name__)
 
@@ -101,10 +102,11 @@ class WeatherService:
                 code = current.get("weather_code", 1)
                 condition = self._map_wmo_code(code)
 
-                return {
+                payload: Dict[str, Any] = {
                     "location_name": location_name or "Your Location",
                     "latitude": lat,
                     "longitude": lon,
+                    "model_elevation_m": data.get("elevation"),
                     "temperature": round(current.get("temperature_2m", 28.0), 1),
                     "apparent_temperature": round(current.get("apparent_temperature", 30.0), 1),
                     "condition": condition,
@@ -128,7 +130,7 @@ class WeatherService:
         except Exception as e:
             logger.warning(f"Live telemetry fetch failed, falling back to local defaults: {e}")
             # Realistic baseline fallback
-            return {
+            payload = {
                 "location_name": location_name or "Your Location",
                 "latitude": lat,
                 "longitude": lon,
@@ -157,14 +159,26 @@ class WeatherService:
                 ],
             }
 
+        try:
+            payload = spatial_downscaling_engine.downscale_weather_payload(payload, lat, lon)
+        except Exception as ds_err:
+            logger.warning(f"Spatial downscaling skipped due to error: {ds_err}")
+
+        return payload
+
     def get_current_conditions(self, lat: float, lon: float) -> str:
         """Fetch current conditions string for AI agent function calling."""
         data = self.get_structured_weather_data(lat, lon)
-        return (
-            f"Weather Data: {data['temperature']}°C (Feels like {data['apparent_temperature']}°C), "
+        base = (
+            f"Weather Data (1km Downscaled): {data['temperature']}°C "
+            f"(Feels like {data['apparent_temperature']}°C), "
             f"{data['condition']}, High: {data['temp_max']}°C, Low: {data['temp_min']}°C, "
             f"Humidity {data['humidity']}%, Wind {data['wind_speed']} km/h, Rain chance {data['rain_chance']}%, "
             f"AQI {data['aqi']}."
         )
+        ds = data.get("spatial_downscaling")
+        if ds:
+            return f"{base} {spatial_downscaling_engine.format_for_ai(ds)}"
+        return base
 
 weather_service = WeatherService()
