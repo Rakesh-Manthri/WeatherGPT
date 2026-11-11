@@ -10,3 +10,8 @@ python-dotenv>=1.0.0
 nest_asyncio>=1.6.0
 google-auth>=2.27.0
 earthengine-api>=1.7.50
+# WeatherNext 3 Zarr stack (Google DeepMind GCS)
+zarr>=3.0.0
+obstore>=0.11.0
+xarray>=2024.1.0
+numpy>=1.26.0

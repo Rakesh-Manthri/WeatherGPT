@@ -2,6 +2,7 @@ from google import genai
 from google.genai import types
 from .weather_service import weather_service
 from .earth_engine_service import earth_engine_service
+from .weathernext_service import weathernext_service
 import asyncio
 
 # --- Tool Definitions ---
@@ -35,12 +36,31 @@ def get_weather_alerts(location: str) -> str:
     """Checks for severe weather warnings or alerts for a location."""
     return f"No active severe weather alerts for {location}."
 
+def get_weathernext_forecast(location: str) -> str:
+    """
+    Fetches a high-accuracy ensemble weather forecast from WeatherNext 3,
+    Google DeepMind's operational global weather model (0.1° resolution,
+    64-member ensemble, stored as Zarr on Google Cloud Storage).
+    Use for precise temperature, wind, precipitation, and cloud-cover forecasts.
+    Input: 'city name' or 'latitude,longitude' (e.g. '17.385,78.4867').
+    """
+    try:
+        if "," in location:
+            lat, lon = map(float, location.split(","))
+            return weathernext_service.get_forecast_summary_for_ai(lat, lon)
+    except Exception:
+        pass
+    return (
+        "WeatherNext 3 ensemble forecast is active. "
+        "Provide coordinates as 'lat,lon' for a precise forecast."
+    )
+
 # --- Agent Setup ---
 
 class WeatherAIAgent:
     def __init__(self, gemini_api_key: str):
         self.client = genai.Client(api_key=gemini_api_key)
-        self.tools = [get_current_weather, get_satellite_weather_layer, get_weather_forecast, get_weather_alerts]
+        self.tools = [get_current_weather, get_satellite_weather_layer, get_weather_forecast, get_weather_alerts, get_weathernext_forecast]
         self.primary_model = 'gemini-3.5-flash-lite'
         self.fallback_model = 'gemini-3.5-flash'
         

@@ -3,6 +3,7 @@ import logging
 from typing import Dict, Any, List
 from datetime import datetime
 from .earth_engine_service import earth_engine_service
+from .weathernext_service import weathernext_service
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +123,7 @@ class WeatherService:
                     "aqi": aqi,
                     "hourly": hourly_list,
                     "satellite_telemetry": earth_engine_service.get_satellite_precision_telemetry(lat, lon) if earth_engine_service.is_initialized else None,
+                    "weathernext_forecast": weathernext_service.get_forecast(lat, lon) if weathernext_service.is_initialized else None,
                 }
         except Exception as e:
             logger.warning(f"Live telemetry fetch failed, falling back to local defaults: {e}")
