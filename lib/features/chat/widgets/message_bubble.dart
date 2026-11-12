@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../models/chat_message.dart';
+import 'panchangam_weather_card.dart';
 import 'weather_card_bubble.dart';
 
 class MessageBubble extends StatelessWidget {
@@ -34,13 +35,20 @@ class MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final isUser = message.isUser;
     final content = _formatContent(message.text);
-    final hasWeatherData = !isUser && message.weatherData != null;
+    final weatherMap = message.weatherData;
+    final hasWeatherData = !isUser && weatherMap != null;
+    final hasWeatherTelemetry =
+        hasWeatherData && weatherMap.containsKey('temperature');
+    final panchangamData = !isUser && weatherMap != null
+        ? weatherMap['panchangam_fusion'] as Map<String, dynamic>?
+        : null;
+    final hasCard = hasWeatherTelemetry || panchangamData != null;
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
-        padding: hasWeatherData
+        padding: hasCard
             ? const EdgeInsets.all(12)
             : const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
@@ -60,7 +68,7 @@ class MessageBubble extends StatelessWidget {
               : null,
         ),
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * (hasWeatherData ? 0.92 : 0.85),
+          maxWidth: MediaQuery.of(context).size.width * (hasCard ? 0.92 : 0.85),
         ),
         child: isUser
             ? Text(
@@ -74,17 +82,21 @@ class MessageBubble extends StatelessWidget {
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (hasWeatherData)
+                  if (hasWeatherTelemetry)
                     WeatherCardBubble(
-                      weatherData: message.weatherData!,
+                      weatherData: weatherMap,
                       onViewMap: onViewMap,
+                    ),
+                  if (panchangamData != null)
+                    PanchangamWeatherCard(
+                      panchangamData: panchangamData,
                     ),
                   if (content.isNotEmpty)
                     Padding(
                       padding: EdgeInsets.only(
-                        top: hasWeatherData ? 6 : 0,
-                        left: hasWeatherData ? 4 : 0,
-                        right: hasWeatherData ? 4 : 0,
+                        top: hasCard ? 6 : 0,
+                        left: hasCard ? 4 : 0,
+                        right: hasCard ? 4 : 0,
                       ),
                       child: MarkdownBody(
                         data: content,

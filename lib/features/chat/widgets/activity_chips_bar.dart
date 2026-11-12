@@ -39,6 +39,16 @@ class ActivityChipsBar extends StatelessWidget {
       'label': 'UV & Sun Index',
       'prompt': 'What is the UV index and sun protection recommendation for today?',
     },
+    {
+      'icon': '🪔',
+      'label': 'Panchangam & Muhurtham',
+      'prompt': 'Show today\'s Panchangam, Tithi, Nakshatra, and best weather Muhurtham windows.',
+    },
+    {
+      'icon': '🌱',
+      'label': 'Farming & Tithi',
+      'prompt': 'Is today auspicious and weather-suitable for sowing crops per Panchangam?',
+    },
   ];
 
   @override
