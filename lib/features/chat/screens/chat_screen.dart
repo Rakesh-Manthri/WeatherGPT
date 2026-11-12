@@ -154,6 +154,18 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  bool _isMapIntent(String query) {
+    final q = query.toLowerCase();
+    return q.contains('map') ||
+        q.contains('radar') ||
+        q.contains('gis') ||
+        q.contains('wind layer') ||
+        q.contains('satellite layer') ||
+        q.contains('precipitation cell') ||
+        q.contains('నక్ష') ||
+        q.contains('नक्शा');
+  }
+
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty || _isTyping) return;
 
@@ -188,6 +200,8 @@ class _ChatScreenState extends State<ChatScreen> {
         language: LocaleService.currentLanguage.englishName,
       );
 
+      final isMapRequested = _isMapIntent(text);
+
       if (mounted) {
         setState(() {
           _isTyping = false;
@@ -200,6 +214,9 @@ class _ChatScreenState extends State<ChatScreen> {
               ttsText: result.ttsText,
               ttsLocale: result.ttsLocale,
               detectedLanguage: result.detectedLanguage,
+              isOfflineEdgeAi: result.isOfflineEdgeAi,
+              offlineCacheAge: result.offlineCacheAge,
+              showMapBubble: isMapRequested,
             ),
           );
         });

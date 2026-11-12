@@ -6,6 +6,9 @@ class ChatMessage {
   final String? ttsText;
   final String? ttsLocale;
   final String? detectedLanguage;
+  final bool isOfflineEdgeAi;
+  final String? offlineCacheAge;
+  final bool showMapBubble;
 
   ChatMessage({
     required this.text,
@@ -15,5 +18,8 @@ class ChatMessage {
     this.ttsText,
     this.ttsLocale,
     this.detectedLanguage,
+    this.isOfflineEdgeAi = false,
+    this.offlineCacheAge,
+    this.showMapBubble = false,
   });
 }

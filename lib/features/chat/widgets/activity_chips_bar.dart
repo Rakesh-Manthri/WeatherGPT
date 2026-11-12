@@ -10,6 +10,11 @@ class ActivityChipsBar extends StatelessWidget {
 
   static const List<Map<String, String>> _chips = [
     {
+      'icon': '🗺️',
+      'label': 'GIS Radar & Wind Map',
+      'prompt': 'Show interactive radar map with wind and precipitation cells.',
+    },
+    {
       'icon': '🏃',
       'label': 'Running & Workout',
       'prompt': 'What is the outdoor running and workout suitability rating right now?',

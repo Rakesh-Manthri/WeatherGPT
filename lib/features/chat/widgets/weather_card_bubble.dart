@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'weather_map_bubble.dart';
 
 class WeatherCardBubble extends StatefulWidget {
   final Map<String, dynamic> weatherData;
@@ -16,6 +17,7 @@ class WeatherCardBubble extends StatefulWidget {
 
 class _WeatherCardBubbleState extends State<WeatherCardBubble> {
   int _selectedMetricTab = 0; // 0 = Temperature, 1 = Precipitation, 2 = Wind
+  bool _showInlineMap = false;
 
   IconData _getWeatherIcon(int code, bool isDay) {
     switch (code) {
@@ -362,35 +364,75 @@ class _WeatherCardBubbleState extends State<WeatherCardBubble> {
 
           const SizedBox(height: 12),
 
-          // GIS Map Action Button ("Explore on GIS Map")
-          if (widget.onViewMap != null)
+          // Inline GIS Radar Map (if toggled)
+          if (_showInlineMap) ...[
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-              child: SizedBox(
-                width: double.infinity,
-                height: 40,
-                child: ElevatedButton.icon(
-                  onPressed: () => widget.onViewMap!(lat, lon),
-                  icon: const Icon(Icons.map_outlined, size: 16),
-                  label: const Text(
-                    'Explore Spatial Map',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.1,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1C1C1E),
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: WeatherMapBubble(
+                weatherData: data,
+                onExpandFullscreen: widget.onViewMap,
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+
+          // GIS Map Action Buttons
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 40,
+                    child: ElevatedButton.icon(
+                      onPressed: () => setState(() => _showInlineMap = !_showInlineMap),
+                      icon: Icon(
+                        _showInlineMap ? Icons.layers_clear_rounded : Icons.radar_rounded,
+                        size: 16,
+                      ),
+                      label: Text(
+                        _showInlineMap ? 'Hide Radar Map' : 'Live Radar & Wind Map',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.1,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _showInlineMap
+                            ? const Color(0xFFE2E8F0)
+                            : const Color(0xFF1C1C1E),
+                        foregroundColor: _showInlineMap
+                            ? const Color(0xFF1C1C1E)
+                            : Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
+                if (widget.onViewMap != null) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.fullscreen_rounded, size: 20, color: Color(0xFF1C1C1E)),
+                      tooltip: 'Open Fullscreen Map',
+                      onPressed: () => widget.onViewMap!(lat, lon),
+                    ),
+                  ),
+                ],
+              ],
             ),
+          ),
         ],
       ),
     );

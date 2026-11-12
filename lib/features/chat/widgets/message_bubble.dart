@@ -4,6 +4,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import '../models/chat_message.dart';
 import 'panchangam_weather_card.dart';
 import 'weather_card_bubble.dart';
+import 'weather_map_bubble.dart';
 
 class MessageBubble extends StatelessWidget {
   final ChatMessage message;
@@ -46,7 +47,8 @@ class MessageBubble extends StatelessWidget {
     final panchangamData = !isUser && weatherMap != null
         ? weatherMap['panchangam_fusion'] as Map<String, dynamic>?
         : null;
-    final hasCard = hasWeatherTelemetry || panchangamData != null;
+    final hasMap = !isUser && message.showMapBubble && hasWeatherData;
+    final hasCard = hasWeatherTelemetry || panchangamData != null || hasMap;
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -86,6 +88,40 @@ class MessageBubble extends StatelessWidget {
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (message.isOfflineEdgeAi)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF8E1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFFFE082)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.offline_bolt_rounded,
+                            size: 14,
+                            color: Color(0xFFF57C00),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Offline Edge AI${message.offlineCacheAge != null ? ' • ${message.offlineCacheAge}' : ''}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFFE65100),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (hasMap)
+                    WeatherMapBubble(
+                      weatherData: weatherMap,
+                      onExpandFullscreen: onViewMap,
+                    ),
                   if (hasWeatherTelemetry)
                     WeatherCardBubble(
                       weatherData: weatherMap,
