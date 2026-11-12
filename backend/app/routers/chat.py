@@ -8,6 +8,7 @@ from ..services.spatial_downscaling import spatial_downscaling_engine
 from ..services.panchangam_service import is_panchangam_query, panchangam_service
 from ..services.weathernext_service import weathernext_service
 from ..services.indic_voice_service import indic_voice_service
+from ..middleware.guardrails import LLMGuardrails
 
 router = APIRouter()
 
@@ -35,8 +36,25 @@ async def get_supported_voice_languages():
 
 @router.post("/completions", response_model=ChatResponse)
 async def chat_completions(req: ChatRequest):
-    structured_weather: Optional[Dict[str, Any]] = None
+    # Guardrail: Defend against prompt injection, jailbreaks, and exfiltration
+    is_safe, threat_type, refusal_msg = LLMGuardrails.evaluate_prompt(req.message)
     lang_spec = indic_voice_service.resolve_language(req.language, req.message)
+
+    if not is_safe and refusal_msg:
+        tts_text = indic_voice_service.sanitize_for_tts(refusal_msg, lang_spec)
+        return ChatResponse(
+            reply=refusal_msg,
+            weather_context_used=False,
+            weather_data=None,
+            tts_text=tts_text,
+            detected_language=lang_spec.english_name,
+            tts_locale=lang_spec.tts_locale,
+            stt_locale=lang_spec.stt_locale,
+        )
+
+    req.message = LLMGuardrails.sanitize_user_input(req.message)
+
+    structured_weather: Optional[Dict[str, Any]] = None
     context_prefix = indic_voice_service.build_prompt_directive(
         lang_spec, voice_mode=req.voice_mode
     ) + " "
