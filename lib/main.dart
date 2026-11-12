@@ -8,7 +8,7 @@ import 'features/chat/screens/chat_screen.dart';
 import 'features/profile/screens/profile_screen.dart';
 import 'features/news/screens/news_screen.dart';
 import 'features/voice/screens/voice_assistant_screen.dart';
-import 'package:mappls_gl/mappls_gl.dart';
+import 'features/map/screens/map_screen.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'core/localization/locale_service.dart';
 import 'core/api/weather_api_client.dart';
@@ -155,127 +155,116 @@ class _WeatherGptScreenState extends State<WeatherGptScreen> {
   }
 
   Widget _buildHomeScreen(BuildContext context) {
+    if (_selectedToggleIndex == 1) {
+      return MapScreen(
+        onBackToChat: () {
+          setState(() {
+            _selectedToggleIndex = 0;
+          });
+        },
+      );
+    }
+
     return Container(
       color: const Color(0xFFF7F7F7),
-      child: Stack(
-        children: [
-          // Map Background when Mountain pill (index 1) is selected
-          if (_selectedToggleIndex == 1)
-            Positioned.fill(
-              child: MapplsMap(
-                initialCameraPosition: const CameraPosition(
-                  target: LatLng(28.6139, 77.2090),
-                  zoom: 11.0,
-                ),
-                myLocationEnabled: true,
-                myLocationTrackingMode: MyLocationTrackingMode.tracking,
+      child: SafeArea(
+        child: Column(
+          children: [
+            // Top Navigation Bar
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Profile Button (slides from left to right)
+                  _CircularIconButton(
+                    icon: Icons.person_outline_rounded,
+                    onPressed: () => _goToPage(0),
+                  ),
+
+                  // Search / Map Mode Toggle
+                  _SegmentedToggle(
+                    selectedIndex: _selectedToggleIndex,
+                    onChanged: (index) {
+                      setState(() {
+                        _selectedToggleIndex = index;
+                      });
+                    },
+                  ),
+
+                  // News Button (slides from right to left)
+                  _CircularIconButton(
+                    icon: Icons.article_outlined,
+                    onPressed: () => _goToPage(2),
+                  ),
+                ],
               ),
             ),
 
-          // Home Page Interface (Top Pills, Center Area, Bottom Floating Input)
-          SafeArea(
-            child: Column(
-              children: [
-                // Top Navigation Bar
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // Profile Button (slides from left to right)
-                      _CircularIconButton(
-                        icon: Icons.person_outline_rounded,
-                        onPressed: () => _goToPage(0),
-                      ),
-
-                      // Search / Image Mode Toggle
-                      _SegmentedToggle(
-                        selectedIndex: _selectedToggleIndex,
-                        onChanged: (index) {
-                          setState(() {
-                            _selectedToggleIndex = index;
-                          });
-                        },
-                      ),
-
-                      // News Button (slides from right to left)
-                      _CircularIconButton(
-                        icon: Icons.article_outlined,
-                        onPressed: () => _goToPage(2),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Hero Center Content (Visible in Search mode, transparent in Map mode)
-                Expanded(
-                  child: _selectedToggleIndex == 0
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 40),
-                            child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 250),
-                              child: _isIncognito
-                                  ? Column(
-                                      key: const ValueKey('incognito_hero'),
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Text(
-                                          'Incognito mode',
-                                          style: TextStyle(
-                                            fontFamily: 'serif',
-                                            fontSize: 36,
-                                            fontWeight: FontWeight.w500,
-                                            color: Color(0xFF555555),
-                                            letterSpacing: -0.3,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        const Text(
-                                          'Your chat will not be stored',
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            color: Color(0xFF888888),
-                                            letterSpacing: -0.1,
-                                          ),
-                                        ),
-                                      ],
-                                    )
-                                  : const Text(
-                                      'WeatherGPT',
-                                      key: ValueKey('weathergpt_hero'),
-                                      style: TextStyle(
-                                        fontFamily: 'serif',
-                                        fontSize: 36,
-                                        fontWeight: FontWeight.w500,
-                                        color: Color(0xFF555555),
-                                        letterSpacing: -0.3,
-                                      ),
-                                    ),
+            // Hero Center Content (Visible in Search mode)
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 40),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 250),
+                    child: _isIncognito
+                        ? Column(
+                            key: const ValueKey('incognito_hero'),
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'Incognito mode',
+                                style: TextStyle(
+                                  fontFamily: 'serif',
+                                  fontSize: 36,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF555555),
+                                  letterSpacing: -0.3,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                'Your chat will not be stored',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Color(0xFF888888),
+                                  letterSpacing: -0.1,
+                                ),
+                              ),
+                            ],
+                          )
+                        : const Text(
+                            'WeatherGPT',
+                            key: ValueKey('weathergpt_hero'),
+                            style: TextStyle(
+                              fontFamily: 'serif',
+                              fontSize: 36,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF555555),
+                              letterSpacing: -0.3,
                             ),
                           ),
-                        )
-                      : const SizedBox.shrink(),
-                ),
-
-                // Bottom Chat Input Card (Visible only in Search mode)
-                if (_selectedToggleIndex == 0)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                    child: _ChatInputCard(
-                      controller: _inputController,
-                      isIncognito: _isIncognito,
-                      onIncognitoChanged: (val) {
-                        setState(() {
-                          _isIncognito = val;
-                        });
-                      },
-                    ),
                   ),
-              ],
+                ),
+              ),
             ),
-          ),
-        ],
+
+            // Bottom Chat Input Card (Visible in Search mode)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+              child: _ChatInputCard(
+                controller: _inputController,
+                isIncognito: _isIncognito,
+                onIncognitoChanged: (val) {
+                  setState(() {
+                    _isIncognito = val;
+                  });
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

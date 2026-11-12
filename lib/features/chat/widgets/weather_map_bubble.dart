@@ -176,7 +176,7 @@ class _WeatherMapBubbleState extends State<WeatherMapBubble>
                       animation: _radarAnimController,
                       builder: (context, _) {
                         return CustomPaint(
-                          painter: _GisRadarOverlayPainter(
+                          painter: GisRadarOverlayPainter(
                             sweepProgress: _radarAnimController.value,
                             layer: _activeLayer,
                             rainChance: rainChance,
@@ -545,14 +545,14 @@ class _WeatherMapBubbleState extends State<WeatherMapBubble>
 
 /// Dynamic canvas painter for animated radar sweeps, vector wind arrows,
 /// and precipitation heat cells overlaid on the Mappls vector tiles.
-class _GisRadarOverlayPainter extends CustomPainter {
+class GisRadarOverlayPainter extends CustomPainter {
   final double sweepProgress;
   final MapLayerType layer;
   final int rainChance;
   final double windSpeed;
   final double windDegrees;
 
-  _GisRadarOverlayPainter({
+  GisRadarOverlayPainter({
     required this.sweepProgress,
     required this.layer,
     required this.rainChance,
@@ -686,7 +686,7 @@ class _GisRadarOverlayPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _GisRadarOverlayPainter oldDelegate) {
+  bool shouldRepaint(covariant GisRadarOverlayPainter oldDelegate) {
     return oldDelegate.sweepProgress != sweepProgress ||
         oldDelegate.layer != layer ||
         oldDelegate.rainChance != rainChance ||

@@ -103,9 +103,9 @@ class _ChatScreenState extends State<ChatScreen> {
     // In incognito mode, do NOT store messages in history
     if (widget.isIncognito) return;
 
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) return;
     try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
       await _ensureSession();
       if (_currentSessionId != null) {
         await Supabase.instance.client.from('chat_messages').insert({
@@ -122,10 +122,10 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _loadExistingMessages() async {
     if (widget.isIncognito) return;
 
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null || _currentSessionId == null) return;
-
     try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null || _currentSessionId == null) return;
+
       final response = await Supabase.instance.client
           .from('chat_messages')
           .select()
@@ -364,6 +364,37 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  void _openGisMapScreen([double? lat, double? lon, int? messageIndex]) {
+    Map<String, dynamic>? weather;
+    if (messageIndex != null &&
+        messageIndex < _messages.length &&
+        _messages[messageIndex].weatherData != null) {
+      weather = _messages[messageIndex].weatherData;
+    } else {
+      for (final msg in _messages.reversed) {
+        if (msg.weatherData != null && msg.weatherData!.isNotEmpty) {
+          weather = msg.weatherData;
+          break;
+        }
+      }
+    }
+    final targetLat = lat ?? (weather?['latitude'] as num?)?.toDouble();
+    final targetLon = lon ?? (weather?['longitude'] as num?)?.toDouble();
+    final locName = weather?['location_name']?.toString();
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MapScreen(
+          initialLat: targetLat,
+          initialLon: targetLon,
+          locationName: locName,
+          weatherData: weather,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -383,53 +414,14 @@ class _ChatScreenState extends State<ChatScreen> {
                     onPressed: () => Navigator.pop(context),
                   ),
 
-                  // Pill Styled WeatherGPT Badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: widget.isIncognito
-                          ? const Color(0xFF1C1C1E)
-                          : Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (widget.isIncognito) ...[
-                          const CustomPaint(
-                            size: Size(16, 16),
-                            painter: _ChatIncognitoIconPainter(
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        Text(
-                          widget.isIncognito
-                              ? 'WeatherGPT • Private'
-                              : 'WeatherGPT',
-                          style: TextStyle(
-                            fontFamily: 'serif',
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: widget.isIncognito
-                                ? Colors.white
-                                : const Color(0xFF1C1C1E),
-                            letterSpacing: -0.2,
-                          ),
-                        ),
-                      ],
-                    ),
+                  // Mode Segmented Toggle (Chat vs GIS Map)
+                  _ChatSegmentedToggle(
+                    selectedIndex: 0,
+                    onChanged: (index) {
+                      if (index == 1) {
+                        _openGisMapScreen();
+                      }
+                    },
                   ),
 
                   // Language Picker Button
@@ -507,10 +499,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     isSpeaking: _speakingMessageIndex == index,
                     onSpeakTap: () => _toggleSpeakMessage(index),
                     onViewMap: (lat, lon) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const MapScreen()),
-                      );
+                      _openGisMapScreen(lat, lon, index);
                     },
                   );
                 },
@@ -670,49 +659,85 @@ class _ChatCircularIconButton extends StatelessWidget {
   }
 }
 
-class _ChatIncognitoIconPainter extends CustomPainter {
-  final Color color;
+class _ChatSegmentedToggle extends StatelessWidget {
+  final int selectedIndex;
+  final ValueChanged<int> onChanged;
 
-  const _ChatIncognitoIconPainter({required this.color});
+  const _ChatSegmentedToggle({
+    required this.selectedIndex,
+    required this.onChanged,
+  });
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 1.8 * (size.width / 24.0)
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    final scale = size.width / 24.0;
-    canvas.save();
-    canvas.scale(scale);
-
-    // Hat brim
-    canvas.drawLine(const Offset(2, 14), const Offset(22, 14), paint);
-
-    // Hat crown
-    final crownPath = Path()
-      ..moveTo(6, 14)
-      ..lineTo(6, 11.5)
-      ..cubicTo(6, 9.5, 8, 7, 12, 7)
-      ..cubicTo(16, 7, 18, 9.5, 18, 11.5)
-      ..lineTo(18, 14);
-    canvas.drawPath(crownPath, paint);
-
-    // Left lens
-    canvas.drawCircle(const Offset(8, 18), 3, paint);
-
-    // Right lens
-    canvas.drawCircle(const Offset(16, 18), 3, paint);
-
-    // Bridge
-    canvas.drawLine(const Offset(11, 18), const Offset(13, 18), paint);
-
-    canvas.restore();
+  Widget build(BuildContext context) {
+    return Container(
+      width: 150,
+      height: 48,
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _ChatToggleOption(
+              icon: Icons.chat_bubble_outline_rounded,
+              isSelected: selectedIndex == 0,
+              onTap: () => onChanged(0),
+            ),
+          ),
+          Expanded(
+            child: _ChatToggleOption(
+              icon: Icons.landscape_rounded,
+              isSelected: selectedIndex == 1,
+              onTap: () => onChanged(1),
+            ),
+          ),
+        ],
+      ),
+    );
   }
+}
+
+class _ChatToggleOption extends StatelessWidget {
+  final IconData icon;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _ChatToggleOption({
+    required this.icon,
+    required this.isSelected,
+    required this.onTap,
+  });
 
   @override
-  bool shouldRepaint(covariant _ChatIncognitoIconPainter oldDelegate) =>
-      oldDelegate.color != color;
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF1C1C1E) : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Center(
+          child: Icon(
+            icon,
+            size: 19,
+            color: isSelected ? Colors.white : const Color(0xFF1C1C1E),
+          ),
+        ),
+      ),
+    );
+  }
 }
