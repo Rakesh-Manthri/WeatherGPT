@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from .config import settings
-from .routers import weather, chat
+from .routers import weather, chat, alerts, news
 from .services.ai_service import init_ai_agent
 
 @asynccontextmanager
@@ -39,6 +39,8 @@ app.add_middleware(
 
 app.include_router(weather.router, prefix="/api/weather", tags=["weather"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
+app.include_router(alerts.router, prefix="/api/alerts", tags=["alerts"])
+app.include_router(news.router, prefix="/api/news", tags=["news"])
 
 @app.get("/", tags=["root"])
 async def root():
