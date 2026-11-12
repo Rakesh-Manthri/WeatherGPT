@@ -8,11 +8,15 @@ import 'weather_card_bubble.dart';
 class MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final void Function(double lat, double lon)? onViewMap;
+  final VoidCallback? onSpeakTap;
+  final bool isSpeaking;
 
   const MessageBubble({
     super.key,
     required this.message,
     this.onViewMap,
+    this.onSpeakTap,
+    this.isSpeaking = false,
   });
 
   String _formatContent(String rawText) {
@@ -144,6 +148,62 @@ class MessageBubble extends StatelessWidget {
                             color: const Color(0xFFF1F3F4),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: const Color(0xFFE0E0E0)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (!isUser && onSpeakTap != null && content.isNotEmpty)
+                    Padding(
+                      padding: EdgeInsets.only(
+                        top: 8,
+                        left: hasCard ? 4 : 0,
+                        right: hasCard ? 4 : 0,
+                      ),
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: InkWell(
+                          onTap: onSpeakTap,
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isSpeaking
+                                  ? const Color(0xFFE8F1FC)
+                                  : const Color(0xFFF3F4F6),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  isSpeaking
+                                      ? Icons.stop_circle_outlined
+                                      : Icons.volume_up_rounded,
+                                  size: 15,
+                                  color: isSpeaking
+                                      ? const Color(0xFF1A73E8)
+                                      : const Color(0xFF5F6368),
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  isSpeaking
+                                      ? 'Stop'
+                                      : (message.detectedLanguage != null
+                                          ? 'Listen (${message.detectedLanguage})'
+                                          : 'Listen'),
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: isSpeaking
+                                        ? const Color(0xFF1A73E8)
+                                        : const Color(0xFF5F6368),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),

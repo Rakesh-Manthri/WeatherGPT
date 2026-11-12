@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -6,6 +7,7 @@ import '../../../core/api/weather_api_client.dart';
 import '../../../core/location/location_service.dart';
 import '../../../core/localization/locale_service.dart';
 import '../../../core/localization/language_picker_sheet.dart';
+import '../../../core/voice/speech_sanitizer.dart';
 import '../models/chat_message.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/typing_indicator.dart';
@@ -34,23 +36,38 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final WeatherApiClient _apiClient = WeatherApiClient();
   final stt.SpeechToText _speech = stt.SpeechToText();
+  final FlutterTts _flutterTts = FlutterTts();
 
   bool _isTyping = false;
   bool _isListening = false;
   bool _speechAvailable = false;
   String _initialTextBeforeSpeech = '';
   String? _currentSessionId;
+  int? _speakingMessageIndex;
+  int _ttsToken = 0;
 
   @override
   void initState() {
     super.initState();
     _currentSessionId = widget.sessionId;
+    _initTts();
     _initChat();
+  }
+
+  Future<void> _initTts() async {
+    try {
+      await _flutterTts.awaitSpeakCompletion(true);
+      await _flutterTts.setSpeechRate(0.48);
+    } catch (e) {
+      debugPrint('Chat TTS init warning: $e');
+    }
   }
 
   @override
   void dispose() {
+    _ttsToken++;
     _speech.stop();
+    _flutterTts.stop();
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -168,6 +185,7 @@ class _ChatScreenState extends State<ChatScreen> {
         lat: position?.latitude,
         lon: position?.longitude,
         sessionId: widget.isIncognito ? null : _currentSessionId,
+        language: LocaleService.currentLanguage.englishName,
       );
 
       if (mounted) {
@@ -179,6 +197,9 @@ class _ChatScreenState extends State<ChatScreen> {
               isUser: false,
               timestamp: DateTime.now(),
               weatherData: result.weatherData,
+              ttsText: result.ttsText,
+              ttsLocale: result.ttsLocale,
+              detectedLanguage: result.detectedLanguage,
             ),
           );
         });
@@ -213,6 +234,47 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       }
     });
+  }
+
+  Future<void> _toggleSpeakMessage(int index) async {
+    if (_speakingMessageIndex == index) {
+      _ttsToken++;
+      await _flutterTts.stop();
+      if (mounted) setState(() => _speakingMessageIndex = null);
+      return;
+    }
+
+    final msg = _messages[index];
+    final targetLang = LocaleService.resolveLanguage(msg.detectedLanguage) ??
+        LocaleService.resolveLanguage(msg.ttsLocale) ??
+        LocaleService.currentLanguage;
+    final cleanText = (msg.ttsText != null && msg.ttsText!.trim().isNotEmpty)
+        ? msg.ttsText!.trim()
+        : SpeechSanitizer.cleanForSpeech(msg.text, language: targetLang);
+    final chunks = SpeechSanitizer.chunkForTts(cleanText);
+    if (chunks.isEmpty) return;
+
+    final myToken = ++_ttsToken;
+    await _flutterTts.stop();
+    try {
+      final avail = await _flutterTts.isLanguageAvailable(targetLang.ttsLocale);
+      if (avail == true || avail == 1) {
+        await _flutterTts.setLanguage(targetLang.ttsLocale);
+      } else {
+        await _flutterTts.setLanguage('en-IN');
+      }
+    } catch (_) {}
+
+    if (mounted) setState(() => _speakingMessageIndex = index);
+
+    for (final chunk in chunks) {
+      if (!mounted || myToken != _ttsToken) return;
+      await _flutterTts.speak(chunk);
+    }
+
+    if (mounted && myToken == _ttsToken) {
+      setState(() => _speakingMessageIndex = null);
+    }
   }
 
   Future<void> _toggleListening() async {
@@ -425,6 +487,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   }
                   return MessageBubble(
                     message: _messages[index],
+                    isSpeaking: _speakingMessageIndex == index,
+                    onSpeakTap: () => _toggleSpeakMessage(index),
                     onViewMap: (lat, lon) {
                       Navigator.push(
                         context,

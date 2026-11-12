@@ -2,17 +2,38 @@ import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../localization/locale_service.dart';
+import '../voice/speech_sanitizer.dart';
 
 class ChatCompletionResult {
   final String reply;
   final Map<String, dynamic>? weatherData;
   final bool weatherContextUsed;
+  final String? ttsText;
+  final String? detectedLanguage;
+  final String? ttsLocale;
+  final String? sttLocale;
 
   const ChatCompletionResult({
     required this.reply,
     this.weatherData,
     this.weatherContextUsed = false,
+    this.ttsText,
+    this.detectedLanguage,
+    this.ttsLocale,
+    this.sttLocale,
   });
+
+  factory ChatCompletionResult.fromResponseJson(Map<String, dynamic> data) {
+    return ChatCompletionResult(
+      reply: data['reply'] as String? ?? '',
+      weatherData: data['weather_data'] as Map<String, dynamic>?,
+      weatherContextUsed: data['weather_context_used'] as bool? ?? false,
+      ttsText: data['tts_text'] as String?,
+      detectedLanguage: data['detected_language'] as String?,
+      ttsLocale: data['tts_locale'] as String?,
+      sttLocale: data['stt_locale'] as String?,
+    );
+  }
 }
 
 class WeatherApiClient {
@@ -72,13 +93,16 @@ class WeatherApiClient {
     double? lon,
     String? sessionId,
     String? language,
+    bool voiceMode = false,
   }) async {
+    final selectedLang = language ?? LocaleService.currentLanguage.englishName;
     final payload = {
       'message': message,
       'lat': lat,
       'lon': lon,
       'session_id': sessionId,
-      'language': language ?? LocaleService.currentLanguage.englishName,
+      'language': selectedLang,
+      'voice_mode': voiceMode,
     };
 
     final candidates = _candidateUrls;
@@ -88,11 +112,8 @@ class WeatherApiClient {
       try {
         final dio = _createDio(_resolvedBaseUrl!, timeoutSeconds: 15);
         final response = await dio.post('/chat/completions', data: payload);
-        final data = response.data;
-        return ChatCompletionResult(
-          reply: data['reply'] as String? ?? '',
-          weatherData: data['weather_data'] as Map<String, dynamic>?,
-          weatherContextUsed: data['weather_context_used'] as bool? ?? false,
+        return ChatCompletionResult.fromResponseJson(
+          Map<String, dynamic>.from(response.data as Map),
         );
       } catch (_) {
         // If it fails, reset and fall through to auto-discovery
@@ -110,11 +131,8 @@ class WeatherApiClient {
         final dio = _createDio(url, timeoutSeconds: timeout);
         final response = await dio.post('/chat/completions', data: payload);
         _resolvedBaseUrl = url; // Remember working endpoint
-        final data = response.data;
-        return ChatCompletionResult(
-          reply: data['reply'] as String? ?? '',
-          weatherData: data['weather_data'] as Map<String, dynamic>?,
-          weatherContextUsed: data['weather_context_used'] as bool? ?? false,
+        return ChatCompletionResult.fromResponseJson(
+          Map<String, dynamic>.from(response.data as Map),
         );
       } catch (e) {
         lastError = e;
@@ -123,12 +141,23 @@ class WeatherApiClient {
 
     if (lat != null && lon != null) {
       // Graceful offline fallback with local telemetry for uninterrupted reviews
+      const fallbackReply =
+          "*(Backend connecting — showing local meteorological telemetry)*\n\n"
+          "**Actionable Advisory:**\n"
+          "• 🧥 **Attire:** Comfortable lightweight fabrics; no heavy layers needed.\n"
+          "• 🏃 **Outdoor Activity:** 8.5/10 — Great conditions for outdoor running or walking.\n"
+          "• 🌿 **Air Quality:** Moderate AQI — good for general outdoor activities.";
+      final activeLang = LocaleService.resolveLanguage(selectedLang) ??
+          LocaleService.currentLanguage;
       return ChatCompletionResult(
-        reply: "*(Backend connecting — showing local meteorological telemetry)*\n\n"
-               "**Actionable Advisory:**\n"
-               "• 🧥 **Attire:** Comfortable lightweight fabrics; no heavy layers needed.\n"
-               "• 🏃 **Outdoor Activity:** 8.5/10 — Great conditions for outdoor running or walking.\n"
-               "• 🌿 **Air Quality:** Moderate AQI — good for general outdoor activities.",
+        reply: fallbackReply,
+        ttsText: SpeechSanitizer.cleanForSpeech(
+          fallbackReply,
+          language: activeLang,
+        ),
+        detectedLanguage: activeLang.englishName,
+        ttsLocale: activeLang.ttsLocale,
+        sttLocale: activeLang.sttLocale,
         weatherData: {
           'location_name': 'Local Telemetry',
           'latitude': lat,
@@ -166,6 +195,7 @@ class WeatherApiClient {
 
     return ChatCompletionResult(
       reply: errorText,
+      ttsText: errorText,
       weatherData: null,
       weatherContextUsed: false,
     );
@@ -177,6 +207,7 @@ class WeatherApiClient {
     double? lon,
     String? sessionId,
     String? language,
+    bool voiceMode = false,
   }) async {
     final res = await getChatCompletionResult(
       message,
@@ -184,6 +215,7 @@ class WeatherApiClient {
       lon: lon,
       sessionId: sessionId,
       language: language,
+      voiceMode: voiceMode,
     );
     return res.reply;
   }

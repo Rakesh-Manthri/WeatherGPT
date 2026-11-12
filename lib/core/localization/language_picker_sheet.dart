@@ -21,7 +21,7 @@ class LanguagePickerSheet extends StatelessWidget {
         final screenHeight = MediaQuery.of(context).size.height;
 
         return Container(
-          height: screenHeight * 0.55,
+          height: screenHeight * 0.62,
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
