@@ -49,6 +49,12 @@ void main() {
   group('OfflineEdgeAiService Inference & Grounding Tests', () {
     final edgeService = OfflineEdgeAiService.instance;
 
+    test('initializes and detects on-device model weights from edge_ai/models', () async {
+      await edgeService.init();
+      expect(edgeService.isModelReady, isTrue);
+      expect(edgeService.status, EdgeAiStatus.ready);
+    });
+
     test('generates grounded response matching cached metrics in English', () async {
       await OfflineWeatherCache.instance.saveTelemetry({
         'location_name': 'Hyderabad',

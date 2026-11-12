@@ -57,16 +57,32 @@ class OfflineEdgeAiService {
     if (_isInitialized) return;
     _isInitialized = true;
     try {
-      final dir = await getApplicationDocumentsDirectory();
-      _modelFile = File('${dir.path}/$modelFileName');
-      if (await _modelFile!.exists()) {
-        final length = await _modelFile!.length();
+      try {
+        final dir = await getApplicationDocumentsDirectory();
+        _modelFile = File('${dir.path}/$modelFileName');
+        if (await _modelFile!.exists()) {
+          final length = await _modelFile!.length();
+          if (length > 1000000) {
+            // File exists and is non-empty
+            statusNotifier.value = EdgeAiStatus.ready;
+            return;
+          }
+        }
+      } catch (_) {
+        // Handled in headless/unit-test environments where path_provider channel is unmocked
+      }
+
+      // Check bundled / workspace model path for local development & testing
+      final localDevModel = File('edge_ai/models/$modelFileName');
+      if (await localDevModel.exists()) {
+        final length = await localDevModel.length();
         if (length > 1000000) {
-          // File exists and is non-empty
+          _modelFile = localDevModel;
           statusNotifier.value = EdgeAiStatus.ready;
           return;
         }
       }
+
       statusNotifier.value = EdgeAiStatus.notDownloaded;
     } catch (e) {
       debugPrint('Error initializing OfflineEdgeAiService: $e');
@@ -107,21 +123,33 @@ class OfflineEdgeAiService {
         }
         await sink.close();
       } else {
-        // Fast mock initializer for testing / offline demo setups
-        // Creates the verified model bundle placeholder on disk
-        for (var i = 1; i <= 10; i++) {
-          await Future.delayed(const Duration(milliseconds: 120));
-          final p = i / 10.0;
-          downloadProgressNotifier.value = p;
-          onProgress?.call(p);
+        // If the trained GGUF model already exists in edge_ai/models/, copy it into app documents
+        final localDevModel = File('edge_ai/models/$modelFileName');
+        if (await localDevModel.exists() && (await localDevModel.length()) > 1000000) {
+          for (var i = 1; i <= 10; i++) {
+            await Future.delayed(const Duration(milliseconds: 30));
+            final p = i / 10.0;
+            downloadProgressNotifier.value = p;
+            onProgress?.call(p);
+          }
+          await localDevModel.copy(targetFile.path);
+        } else {
+          // Fast mock initializer for testing / offline demo setups
+          // Creates the verified model bundle placeholder on disk
+          for (var i = 1; i <= 10; i++) {
+            await Future.delayed(const Duration(milliseconds: 120));
+            final p = i / 10.0;
+            downloadProgressNotifier.value = p;
+            onProgress?.call(p);
+          }
+          final sink = targetFile.openWrite();
+          sink.write('// WeatherGPT Qwen2.5-0.5B-Instruct INT4 Q4_K_M GGUF Model Container\n');
+          sink.write('// Architecture: Qwen2.5 (490M parameters), Quantization: Q4_K_M (352MB)\n');
+          for (var i = 0; i < 4000; i++) {
+            sink.write('0123456789ABCDEF' * 16);
+          }
+          await sink.close();
         }
-        final sink = targetFile.openWrite();
-        sink.write('// WeatherGPT Qwen2.5-0.5B-Instruct INT4 Q4_K_M GGUF Model Container\n');
-        sink.write('// Architecture: Qwen2.5 (490M parameters), Quantization: Q4_K_M (352MB)\n');
-        for (var i = 0; i < 4000; i++) {
-          sink.write('0123456789ABCDEF' * 16);
-        }
-        await sink.close();
       }
 
       _modelFile = targetFile;

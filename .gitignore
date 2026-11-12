@@ -56,3 +56,8 @@ backend/venv/
 backend/.venv/
 **/__pycache__/
 *.py[cod]
+
+# On-device SLM Model Weights (Large binaries > 100MB)
+*.gguf
+*.bin
+*.onnx
