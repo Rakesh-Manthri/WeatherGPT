@@ -1,8 +1,9 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from typing import Optional
 from ..services.weather_service import weather_service
 from ..services.spatial_downscaling import spatial_downscaling_engine
 from ..services.panchangam_service import panchangam_service
+from ..services.weathernext_service import weathernext_service
 
 router = APIRouter()
 
@@ -19,6 +20,7 @@ async def get_current_weather(lat: float, lon: float):
         "rain_chance": data["rain_chance"],
         "aqi": data["aqi"],
         "spatial_downscaling": data.get("spatial_downscaling"),
+        "weathernext_forecast": data.get("weathernext_forecast"),
     }
 
 @router.get("/downscale")
@@ -70,16 +72,29 @@ async def downscale_point_weather(
     }
 
 @router.get("/forecast")
-async def get_forecast(lat: float, lon: float, days: int = 7):
+async def get_forecast(
+    lat: float,
+    lon: float,
+    days: int = Query(default=7, ge=1, le=14),
+):
     data = weather_service.get_structured_weather_data(lat, lon)
+    daily_forecast = weather_service.get_daily_forecast_list(lat, lon, days=days)
     return {
         "location": {"lat": lat, "lon": lon},
         "current": data,
         "hourly": data["hourly"],
-        "forecast": [
-            {"day": "Today", "max_temp": data["temp_max"], "min_temp": data["temp_min"], "condition": data["condition"]},
-        ]
+        "forecast": daily_forecast,
+        "weathernext_forecast": data.get("weathernext_forecast"),
     }
+
+
+@router.get("/weathernext")
+async def get_weathernext_forecast(
+    lat: float = Query(ge=-90, le=90),
+    lon: float = Query(ge=-180, le=180),
+):
+    """Return the WeatherNext 3 ensemble forecast, or its explicit standby/fallback status."""
+    return weathernext_service.get_forecast(lat, lon)
 
 @router.get("/panchangam")
 async def get_panchangam_weather_fusion(

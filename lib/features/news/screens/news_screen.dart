@@ -32,7 +32,10 @@ class NewsScreen extends StatelessWidget {
 
                   // Pill Styled Header
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(20),
@@ -91,24 +94,24 @@ class NewsScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 24),
                       const Text(
-                        'News feature in under progress',
+                        'Weather news is coming soon',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontFamily: 'serif',
                           fontSize: 20,
-                          fontWeight: FontWeight.w500,
-                          color: Color(0xFF555555),
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF333333),
                           letterSpacing: -0.3,
                         ),
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        'Stay tuned for live weather news and regional alerts.',
+                        'Live weather headlines and regional alerts are not available yet. You can still ask WeatherGPT about current conditions and forecasts in chat.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 14,
-                          color: Color(0xFF888888),
-                          height: 1.4,
+                          color: Color(0xFF777777),
+                          height: 1.5,
                         ),
                       ),
                     ],
@@ -127,10 +130,7 @@ class _NewsCircularIconButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onPressed;
 
-  const _NewsCircularIconButton({
-    required this.icon,
-    required this.onPressed,
-  });
+  const _NewsCircularIconButton({required this.icon, required this.onPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -154,11 +154,7 @@ class _NewsCircularIconButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(22),
           onTap: onPressed,
           child: Center(
-            child: Icon(
-              icon,
-              size: 20,
-              color: const Color(0xFF1C1C1E),
-            ),
+            child: Icon(icon, size: 20, color: const Color(0xFF1C1C1E)),
           ),
         ),
       ),

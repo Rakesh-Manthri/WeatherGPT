@@ -19,6 +19,51 @@ from app.services.panchangam_service import (
 )
 
 
+class TestForecastEndpoint(unittest.TestCase):
+    def test_forecast_honors_requested_days_and_caps_invalid_values(self):
+        from fastapi.testclient import TestClient
+        from app.main import app
+
+        client = TestClient(app)
+        with patch(
+            "app.routers.weather.weather_service.get_structured_weather_data",
+            return_value={"hourly": [], "weathernext_forecast": {"status": "standby"}},
+        ), patch(
+            "app.routers.weather.weather_service.get_daily_forecast_list",
+            return_value=[{"date": f"2025-01-0{i}"} for i in range(1, 4)],
+        ) as daily:
+            response = client.get(
+                "/api/weather/forecast",
+                params={"lat": 17.3, "lon": 78.4, "days": 3},
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(len(response.json()["forecast"]), 3)
+            daily.assert_called_once_with(17.3, 78.4, days=3)
+
+            invalid = client.get(
+                "/api/weather/forecast",
+                params={"lat": 17.3, "lon": 78.4, "days": 0},
+            )
+            self.assertEqual(invalid.status_code, 422)
+
+    def test_weathernext_route_returns_service_status(self):
+        from fastapi.testclient import TestClient
+        from app.main import app
+
+        expected = {"source": "WeatherNext 3", "status": "standby"}
+        with patch(
+            "app.routers.weather.weathernext_service.get_forecast",
+            return_value=expected,
+        ) as forecast:
+            response = TestClient(app).get(
+                "/api/weather/weathernext",
+                params={"lat": 17.3, "lon": 78.4},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), expected)
+        forecast.assert_called_once_with(17.3, 78.4)
+
+
 class TestPanchangamAstronomyAndRag(unittest.TestCase):
     def setUp(self):
         self.svc = PanchangamService()

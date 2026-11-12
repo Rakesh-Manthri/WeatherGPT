@@ -119,11 +119,15 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _messages.clear();
           for (final item in response) {
-            _messages.add(ChatMessage(
-              text: item['content'] ?? '',
-              isUser: item['role'] == 'user',
-              timestamp: DateTime.tryParse(item['created_at'] ?? '') ?? DateTime.now(),
-            ));
+            _messages.add(
+              ChatMessage(
+                text: item['content'] ?? '',
+                isUser: item['role'] == 'user',
+                timestamp:
+                    DateTime.tryParse(item['created_at'] ?? '') ??
+                    DateTime.now(),
+              ),
+            );
           }
         });
         _scrollToBottom();
@@ -134,14 +138,12 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _sendMessage(String text) async {
-    if (text.trim().isEmpty) return;
+    if (text.trim().isEmpty || _isTyping) return;
 
     setState(() {
-      _messages.add(ChatMessage(
-        text: text,
-        isUser: true,
-        timestamp: DateTime.now(),
-      ));
+      _messages.add(
+        ChatMessage(text: text, isUser: true, timestamp: DateTime.now()),
+      );
       _isTyping = true;
     });
     _textController.clear();
@@ -171,12 +173,14 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         setState(() {
           _isTyping = false;
-          _messages.add(ChatMessage(
-            text: result.reply,
-            isUser: false,
-            timestamp: DateTime.now(),
-            weatherData: result.weatherData,
-          ));
+          _messages.add(
+            ChatMessage(
+              text: result.reply,
+              isUser: false,
+              timestamp: DateTime.now(),
+              weatherData: result.weatherData,
+            ),
+          );
         });
         // Save assistant reply to Supabase
         _saveMessageToDb(result.reply, 'assistant');
@@ -186,11 +190,13 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         setState(() {
           _isTyping = false;
-          _messages.add(ChatMessage(
-            text: "Connection Error: $e",
-            isUser: false,
-            timestamp: DateTime.now(),
-          ));
+          _messages.add(
+            ChatMessage(
+              text: "Connection Error: $e",
+              isUser: false,
+              timestamp: DateTime.now(),
+            ),
+          );
         });
         _scrollToBottom();
       }
@@ -269,7 +275,9 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Speech recognition not available or microphone permission denied'),
+            content: Text(
+              'Speech recognition not available or microphone permission denied',
+            ),
             duration: Duration(seconds: 2),
           ),
         );
@@ -298,9 +306,14 @@ class _ChatScreenState extends State<ChatScreen> {
 
                   // Pill Styled WeatherGPT Badge
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
-                      color: widget.isIncognito ? const Color(0xFF1C1C1E) : Colors.white,
+                      color: widget.isIncognito
+                          ? const Color(0xFF1C1C1E)
+                          : Colors.white,
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
@@ -316,17 +329,23 @@ class _ChatScreenState extends State<ChatScreen> {
                         if (widget.isIncognito) ...[
                           const CustomPaint(
                             size: Size(16, 16),
-                            painter: _ChatIncognitoIconPainter(color: Colors.white),
+                            painter: _ChatIncognitoIconPainter(
+                              color: Colors.white,
+                            ),
                           ),
                           const SizedBox(width: 8),
                         ],
                         Text(
-                          widget.isIncognito ? 'WeatherGPT • Private' : 'WeatherGPT',
+                          widget.isIncognito
+                              ? 'WeatherGPT • Private'
+                              : 'WeatherGPT',
                           style: TextStyle(
                             fontFamily: 'serif',
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
-                            color: widget.isIncognito ? Colors.white : const Color(0xFF1C1C1E),
+                            color: widget.isIncognito
+                                ? Colors.white
+                                : const Color(0xFF1C1C1E),
                             letterSpacing: -0.2,
                           ),
                         ),
@@ -347,9 +366,57 @@ class _ChatScreenState extends State<ChatScreen> {
             Expanded(
               child: ListView.builder(
                 controller: _scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                itemCount: _isTyping ? _messages.length + 1 : _messages.length,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                itemCount: _messages.isEmpty
+                    ? 1
+                    : (_isTyping ? _messages.length + 1 : _messages.length),
                 itemBuilder: (context, index) {
+                  if (_messages.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 36, 12, 20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 68,
+                            height: 68,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE8F1FC),
+                              borderRadius: BorderRadius.circular(22),
+                            ),
+                            child: const Icon(
+                              Icons.cloud_outlined,
+                              size: 34,
+                              color: Color(0xFF1A73E8),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          const Text(
+                            'How can I help with your weather?',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1C1C1E),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Ask about today, the forecast, or what to do outdoors.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 14,
+                              height: 1.4,
+                              color: Color(0xFF6A6A6A),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
                   if (_isTyping && index == _messages.length) {
                     return const Align(
                       alignment: Alignment.centerLeft,
@@ -361,9 +428,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     onViewMap: (lat, lon) {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) => const MapScreen(),
-                        ),
+                        MaterialPageRoute(builder: (_) => const MapScreen()),
                       );
                     },
                   );
@@ -376,6 +441,7 @@ class _ChatScreenState extends State<ChatScreen> {
               padding: const EdgeInsets.only(bottom: 8.0),
               child: ActivityChipsBar(
                 onChipSelected: (prompt) {
+                  if (_isTyping) return;
                   _textController.text = prompt;
                   _sendMessage(prompt);
                 },
@@ -425,10 +491,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   isDense: true,
                   contentPadding: EdgeInsets.symmetric(vertical: 8),
                 ),
-                style: const TextStyle(
-                  fontSize: 15,
-                  color: Color(0xFF1C1C1E),
-                ),
+                style: const TextStyle(fontSize: 15, color: Color(0xFF1C1C1E)),
                 onSubmitted: _sendMessage,
               ),
             ),
@@ -436,39 +499,51 @@ class _ChatScreenState extends State<ChatScreen> {
           const SizedBox(width: 8),
 
           // Inline STT Microphone Button
-          GestureDetector(
-            onTap: _toggleListening,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: _isListening ? const Color(0xFFFFECEB) : const Color(0xFFF1F3F4),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-                color: _isListening ? const Color(0xFFD93025) : const Color(0xFF333333),
-                size: 20,
+          Tooltip(
+            message: _isListening ? 'Stop listening' : 'Ask by voice',
+            child: GestureDetector(
+              onTap: _isTyping ? null : _toggleListening,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: _isListening
+                      ? const Color(0xFFFFECEB)
+                      : const Color(0xFFF1F3F4),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                  color: _isListening
+                      ? const Color(0xFFD93025)
+                      : const Color(0xFF333333),
+                  size: 20,
+                ),
               ),
             ),
           ),
           const SizedBox(width: 8),
 
           // Send / Submit Button
-          GestureDetector(
-            onTap: () => _sendMessage(_textController.text),
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: const BoxDecoration(
-                color: Color(0xFF1C1C1E),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.arrow_upward_rounded,
-                color: Colors.white,
-                size: 20,
+          Tooltip(
+            message: 'Send message',
+            child: GestureDetector(
+              onTap: _isTyping
+                  ? null
+                  : () => _sendMessage(_textController.text),
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF1C1C1E),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.arrow_upward_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
               ),
             ),
           ),
@@ -482,10 +557,7 @@ class _ChatCircularIconButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onPressed;
 
-  const _ChatCircularIconButton({
-    required this.icon,
-    required this.onPressed,
-  });
+  const _ChatCircularIconButton({required this.icon, required this.onPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -509,11 +581,7 @@ class _ChatCircularIconButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(22),
           onTap: onPressed,
           child: Center(
-            child: Icon(
-              icon,
-              size: 20,
-              color: const Color(0xFF1C1C1E),
-            ),
+            child: Icon(icon, size: 20, color: const Color(0xFF1C1C1E)),
           ),
         ),
       ),

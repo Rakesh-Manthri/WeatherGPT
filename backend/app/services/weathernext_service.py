@@ -33,6 +33,7 @@ class WeatherNextService:
 
     def _init_credentials(self):
         try:
+            import google.auth
             from google.oauth2 import service_account
             from ..config import settings
 
@@ -44,18 +45,22 @@ class WeatherNextService:
                 if candidate.exists():
                     key_path = str(candidate)
 
-            self._key_path = key_path  # kept for ADC env-var injection
+            self._project_id = settings.GOOGLE_CLOUD_PROJECT or self.PROJECT_ID
+            scopes = ["https://www.googleapis.com/auth/cloud-platform"]
 
-            self._credentials = service_account.Credentials.from_service_account_file(
-                key_path,
-                scopes=["https://www.googleapis.com/auth/cloud-platform"],
-            )
-            # Inject as ADC so obstore picks up the same identity automatically
-            # (obstore uses its own Rust-based token refresh, not google-auth-library)
-            os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", key_path)
+            if os.path.isfile(key_path):
+                self._credentials = service_account.Credentials.from_service_account_file(
+                    key_path,
+                    scopes=scopes,
+                )
+                # obstore's GCS store discovers credentials via ADC.
+                os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", key_path)
+                logger.info("WeatherNext 3: service account credentials loaded.")
+            else:
+                self._credentials, _ = google.auth.default(scopes=scopes)
+                logger.info("WeatherNext 3: application default credentials loaded.")
 
             self.is_initialized = True
-            logger.info("WeatherNext 3: service account credentials loaded.")
         except Exception as exc:
             logger.warning(f"WeatherNext 3: credential initialisation failed — {exc}")
 
@@ -95,6 +100,12 @@ class WeatherNextService:
         Query WeatherNext 3 Zarr store for a single lat/lon point.
         Returns a dict with weather variables at the first forecast step (~6 h out).
         """
+        if not -90 <= lat <= 90 or not -180 <= lon <= 180:
+            return {
+                "source": "WeatherNext 3",
+                "status": "error",
+                "error": "latitude must be between -90 and 90 and longitude between -180 and 180",
+            }
         if not self.is_initialized:
             return {"source": "WeatherNext 3", "status": "standby", "error": "credentials not loaded"}
 
@@ -114,7 +125,7 @@ class WeatherNextService:
                 bucket=self.BUCKET,
                 prefix=prefix,
                 client_options={
-                    "default_headers": {"x-goog-user-project": self.PROJECT_ID}
+                    "default_headers": {"x-goog-user-project": self._project_id}
                 },
             )
 

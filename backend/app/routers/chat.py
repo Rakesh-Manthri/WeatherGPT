@@ -6,6 +6,7 @@ from ..services import ai_service
 from ..services.weather_service import weather_service
 from ..services.spatial_downscaling import spatial_downscaling_engine
 from ..services.panchangam_service import is_panchangam_query, panchangam_service
+from ..services.weathernext_service import weathernext_service
 
 router = APIRouter()
 
@@ -45,6 +46,17 @@ async def chat_completions(req: ChatRequest):
             if structured_weather.get("spatial_downscaling"):
                 context_prefix += (
                     f"[{spatial_downscaling_engine.format_for_ai(structured_weather['spatial_downscaling'])}] "
+                )
+            next_forecast = structured_weather.get("weathernext_forecast") or {}
+            if next_forecast.get("status") == "live":
+                context_prefix += (
+                    "[WeatherNext 3 ensemble forecast: "
+                    f"{next_forecast['temperature_2m_c']}°C, "
+                    f"dew point {next_forecast['dewpoint_2m_c']}°C, "
+                    f"wind {next_forecast['wind_speed_kmh']} km/h, "
+                    f"1-hour precipitation {next_forecast['precipitation_1hr_mm']} mm, "
+                    f"cloud cover {round(next_forecast['total_cloud_cover_fraction'] * 100)}%, "
+                    f"ensemble spread ±{next_forecast['temperature_ensemble_spread_c']}°C.] "
                 )
         except Exception as e:
             print(f"Error fetching telemetry: {e}")
@@ -102,6 +114,6 @@ async def chat_completions(req: ChatRequest):
 
     return ChatResponse(
         reply=reply,
-        weather_context_used=True,
+        weather_context_used=bool(structured_weather),
         weather_data=structured_weather
     )
