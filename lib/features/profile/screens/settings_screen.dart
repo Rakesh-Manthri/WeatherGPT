@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../auth/screens/auth_screen.dart';
 import '../../../core/localization/language_picker_sheet.dart';
+import '../../../core/api/weather_api_client.dart';
+import '../../../core/ai/offline_edge_ai_service.dart';
+import '../../../core/cache/offline_weather_cache.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -14,6 +17,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _usernameController = TextEditingController();
   bool _isEditing = false;
   bool _isSaving = false;
+  bool _offlineMode = WeatherApiClient.forceOfflineMode;
+  String _cacheSummary = 'Loading cache...';
 
   @override
   void initState() {
@@ -21,6 +26,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final user = Supabase.instance.client.auth.currentUser;
     _usernameController.text =
         user?.userMetadata?['username'] ?? user?.email?.split('@').first ?? '';
+    _loadOfflineEdgeState();
+  }
+
+  Future<void> _loadOfflineEdgeState() async {
+    await WeatherApiClient.loadOfflinePreference();
+    await OfflineEdgeAiService.instance.init();
+    final cacheAge = await OfflineWeatherCache.instance.getCacheAgeString();
+    final data = await OfflineWeatherCache.instance.getCachedTelemetry();
+    if (mounted) {
+      setState(() {
+        _offlineMode = WeatherApiClient.forceOfflineMode;
+        if (data != null) {
+          final loc = data['location_name'] ?? 'Local Area';
+          final temp = data['temperature'] ?? '--';
+          _cacheSummary = '$loc • $temp°C (Cached $cacheAge)';
+        } else {
+          _cacheSummary = 'No offline telemetry cached yet';
+        }
+      });
+    }
   }
 
   @override
@@ -333,6 +358,152 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       if (mounted) setState(() {});
                     },
                   ),
+
+                const SizedBox(height: 24),
+
+                // Offline Edge AI Section Header
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                  child: Text(
+                    'OFFLINE EDGE AI (PHASE 3)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.8,
+                      color: Color(0xFF888888),
+                    ),
+                  ),
+                ),
+
+                // Offline Mode Force Switch
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: _offlineMode
+                              ? const Color(0xFFFFF3E0)
+                              : const Color(0xFFF5F5F5),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.offline_bolt_rounded,
+                          size: 20,
+                          color: _offlineMode
+                              ? const Color(0xFFF57C00)
+                              : const Color(0xFF555555),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Force Offline Edge Mode',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1C1C1E),
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Test zero-connectivity Qwen2.5 SLM reasoning',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Color(0xFF999999),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch.adaptive(
+                        value: _offlineMode,
+                        activeTrackColor: const Color(0xFFF57C00),
+                        onChanged: (val) async {
+                          await WeatherApiClient.setForceOfflineMode(val);
+                          setState(() => _offlineMode = val);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                // Model Management Tile
+                ValueListenableBuilder<EdgeAiStatus>(
+                  valueListenable: OfflineEdgeAiService.instance.statusNotifier,
+                  builder: (context, status, _) {
+                    final isReady = status == EdgeAiStatus.ready;
+                    final isDownloading = status == EdgeAiStatus.downloading;
+
+                    return _SettingsTile(
+                      icon: Icons.memory_rounded,
+                      title: 'Qwen2.5-0.5B-Instruct Model',
+                      subtitle: isReady
+                          ? 'Quantized INT4 (Q4_K_M ~352MB) • Ready'
+                          : (isDownloading
+                              ? 'Initializing / downloading edge model...'
+                              : 'Tap to initialize on-device SLM weights'),
+                      onTap: () async {
+                        if (isDownloading) return;
+                        if (!isReady) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Initializing Qwen2.5-0.5B on-device model bundle...'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                          await OfflineEdgeAiService.instance.downloadModel();
+                          if (mounted) setState(() {});
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Qwen2.5-0.5B INT4 is ready for zero-latency offline inference.'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      },
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 10),
+
+                // Cache Telemetry Status
+                _SettingsTile(
+                  icon: Icons.cached_rounded,
+                  title: 'Local Telemetry Cache',
+                  subtitle: _cacheSummary,
+                  onTap: () async {
+                    await _loadOfflineEdgeState();
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Cache updated: $_cacheSummary'),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  },
+                ),
               ],
             ),
           ),

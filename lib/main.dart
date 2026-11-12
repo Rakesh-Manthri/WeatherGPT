@@ -11,6 +11,8 @@ import 'features/voice/screens/voice_assistant_screen.dart';
 import 'package:mappls_gl/mappls_gl.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'core/localization/locale_service.dart';
+import 'core/api/weather_api_client.dart';
+import 'core/ai/offline_edge_ai_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +26,8 @@ void main() async {
     );
 
     await LocaleService.init();
+    await WeatherApiClient.loadOfflinePreference();
+    await OfflineEdgeAiService.instance.init();
   } catch (e) {
     debugPrint("Failed to load .env file or initialize services: $e");
   }

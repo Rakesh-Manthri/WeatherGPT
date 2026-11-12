@@ -38,6 +38,8 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   bool _ttsVoiceAvailable = true;
   bool _continuousHandsFree = false;
   bool _isSubmittingQuery = false;
+  bool _isOfflineEdgeAi = false;
+  String? _offlineCacheAge;
   int _ttsPlaybackToken = 0;
   List<stt.LocaleName> _deviceSttLocales = const [];
   String? _sessionId;
@@ -349,6 +351,8 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
           _ttsText = cleanSpeech;
           _weatherData = result.weatherData;
           _detectedLanguageName = responseLang.name;
+          _isOfflineEdgeAi = result.isOfflineEdgeAi;
+          _offlineCacheAge = result.offlineCacheAge;
           _recognizedText = '';
         });
 
@@ -633,6 +637,35 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
                               : _aiResponse.isNotEmpty
                                   ? Column(
                                       children: [
+                                        if (_isOfflineEdgeAi)
+                                          Container(
+                                            margin: const EdgeInsets.only(bottom: 6),
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFFFF8E1),
+                                              borderRadius: BorderRadius.circular(12),
+                                              border: Border.all(color: const Color(0xFFFFE082)),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                const Icon(
+                                                  Icons.offline_bolt_rounded,
+                                                  size: 13,
+                                                  color: Color(0xFFF57C00),
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  'Offline Edge AI${_offlineCacheAge != null ? ' • $_offlineCacheAge' : ''}',
+                                                  style: const TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: Color(0xFFE65100),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
                                         if (_detectedLanguageName != null)
                                           Padding(
                                             padding: const EdgeInsets.only(bottom: 4),

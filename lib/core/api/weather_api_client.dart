@@ -1,8 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../ai/offline_edge_ai_service.dart';
+import '../cache/offline_weather_cache.dart';
 import '../localization/locale_service.dart';
-import '../voice/speech_sanitizer.dart';
 
 class ChatCompletionResult {
   final String reply;
@@ -12,6 +14,8 @@ class ChatCompletionResult {
   final String? detectedLanguage;
   final String? ttsLocale;
   final String? sttLocale;
+  final bool isOfflineEdgeAi;
+  final String? offlineCacheAge;
 
   const ChatCompletionResult({
     required this.reply,
@@ -21,6 +25,8 @@ class ChatCompletionResult {
     this.detectedLanguage,
     this.ttsLocale,
     this.sttLocale,
+    this.isOfflineEdgeAi = false,
+    this.offlineCacheAge,
   });
 
   factory ChatCompletionResult.fromResponseJson(Map<String, dynamic> data) {
@@ -32,6 +38,7 @@ class ChatCompletionResult {
       detectedLanguage: data['detected_language'] as String?,
       ttsLocale: data['tts_locale'] as String?,
       sttLocale: data['stt_locale'] as String?,
+      isOfflineEdgeAi: false,
     );
   }
 }
@@ -87,6 +94,24 @@ class WeatherApiClient {
     return dio;
   }
 
+  static const String _forceOfflineKey = 'force_offline_edge_mode';
+  static bool forceOfflineMode = false;
+
+  static Future<void> loadOfflinePreference() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      forceOfflineMode = prefs.getBool(_forceOfflineKey) ?? false;
+    } catch (_) {}
+  }
+
+  static Future<void> setForceOfflineMode(bool enabled) async {
+    forceOfflineMode = enabled;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_forceOfflineKey, enabled);
+    } catch (_) {}
+  }
+
   Future<ChatCompletionResult> getChatCompletionResult(
     String message, {
     double? lat,
@@ -96,6 +121,17 @@ class WeatherApiClient {
     bool voiceMode = false,
   }) async {
     final selectedLang = language ?? LocaleService.currentLanguage.englishName;
+
+    // Route directly to on-device Offline Edge AI if user forced offline mode
+    if (forceOfflineMode) {
+      return _runOfflineEdgeAi(
+        message,
+        lat: lat,
+        lon: lon,
+        language: selectedLang,
+      );
+    }
+
     final payload = {
       'message': message,
       'lat': lat,
@@ -112,9 +148,13 @@ class WeatherApiClient {
       try {
         final dio = _createDio(_resolvedBaseUrl!, timeoutSeconds: 15);
         final response = await dio.post('/chat/completions', data: payload);
-        return ChatCompletionResult.fromResponseJson(
+        final res = ChatCompletionResult.fromResponseJson(
           Map<String, dynamic>.from(response.data as Map),
         );
+        if (res.weatherData != null) {
+          OfflineWeatherCache.instance.saveTelemetry(res.weatherData!);
+        }
+        return res;
       } catch (_) {
         // If it fails, reset and fall through to auto-discovery
         _resolvedBaseUrl = null;
@@ -123,7 +163,6 @@ class WeatherApiClient {
 
     // 2. Auto-discovery: iterate through candidates
     // Give Render cold-start extra time (up to 30s) if it is the production URL
-    dynamic lastError;
     for (final url in candidates) {
       try {
         final isRender = url.contains('onrender.com');
@@ -131,73 +170,52 @@ class WeatherApiClient {
         final dio = _createDio(url, timeoutSeconds: timeout);
         final response = await dio.post('/chat/completions', data: payload);
         _resolvedBaseUrl = url; // Remember working endpoint
-        return ChatCompletionResult.fromResponseJson(
+        final res = ChatCompletionResult.fromResponseJson(
           Map<String, dynamic>.from(response.data as Map),
         );
-      } catch (e) {
-        lastError = e;
+        if (res.weatherData != null) {
+          OfflineWeatherCache.instance.saveTelemetry(res.weatherData!);
+        }
+        return res;
+      } catch (_) {
+        // Try next candidate
       }
     }
 
-    if (lat != null && lon != null) {
-      // Graceful offline fallback with local telemetry for uninterrupted reviews
-      const fallbackReply =
-          "*(Backend connecting — showing local meteorological telemetry)*\n\n"
-          "**Actionable Advisory:**\n"
-          "• 🧥 **Attire:** Comfortable lightweight fabrics; no heavy layers needed.\n"
-          "• 🏃 **Outdoor Activity:** 8.5/10 — Great conditions for outdoor running or walking.\n"
-          "• 🌿 **Air Quality:** Moderate AQI — good for general outdoor activities.";
-      final activeLang = LocaleService.resolveLanguage(selectedLang) ??
-          LocaleService.currentLanguage;
-      return ChatCompletionResult(
-        reply: fallbackReply,
-        ttsText: SpeechSanitizer.cleanForSpeech(
-          fallbackReply,
-          language: activeLang,
-        ),
-        detectedLanguage: activeLang.englishName,
-        ttsLocale: activeLang.ttsLocale,
-        sttLocale: activeLang.sttLocale,
-        weatherData: {
-          'location_name': 'Local Telemetry',
-          'latitude': lat,
-          'longitude': lon,
-          'temperature': 28.0,
-          'apparent_temperature': 29.5,
-          'condition': 'Partly Cloudy',
-          'weather_code': 2,
-          'humidity': 62,
-          'wind_speed': 12.0,
-          'wind_direction': 180,
-          'rain_chance': 0,
-          'temp_max': 31,
-          'temp_min': 21,
-          'aqi': 68,
-          'hourly': [
-            {'time': 'Now', 'temp': 28, 'rain_chance': 0, 'weather_code': 1, 'wind_speed': 12},
-            {'time': '20:00', 'temp': 26, 'rain_chance': 0, 'weather_code': 1, 'wind_speed': 11},
-            {'time': '21:00', 'temp': 24, 'rain_chance': 0, 'weather_code': 0, 'wind_speed': 10},
-            {'time': '22:00', 'temp': 23, 'rain_chance': 0, 'weather_code': 0, 'wind_speed': 9},
-            {'time': '23:00', 'temp': 22, 'rain_chance': 0, 'weather_code': 0, 'wind_speed': 8},
-            {'time': '00:00', 'temp': 21, 'rain_chance': 0, 'weather_code': 0, 'wind_speed': 7},
-          ]
-        },
-        weatherContextUsed: true,
-      );
-    }
+    // 3. Offline Fallback -> Seamless routing to On-Device Quantized Edge AI (Qwen2.5-0.5B)
+    return _runOfflineEdgeAi(
+      message,
+      lat: lat,
+      lon: lon,
+      language: selectedLang,
+    );
+  }
 
-    String errorText;
-    if (lastError is DioException) {
-      errorText = "Network Error (${lastError.type}): Could not connect to backend at ${candidates.join(', ')}. Details: ${lastError.message ?? lastError.error}";
-    } else {
-      errorText = "Could not connect to backend server: $lastError";
-    }
+  Future<ChatCompletionResult> _runOfflineEdgeAi(
+    String message, {
+    double? lat,
+    double? lon,
+    required String language,
+  }) async {
+    final edgeResult = await OfflineEdgeAiService.instance.processOfflineQuery(
+      message,
+      lat: lat,
+      lon: lon,
+      language: language,
+    );
+    final activeLang = LocaleService.resolveLanguage(edgeResult.detectedLanguage) ??
+        LocaleService.currentLanguage;
 
     return ChatCompletionResult(
-      reply: errorText,
-      ttsText: errorText,
-      weatherData: null,
-      weatherContextUsed: false,
+      reply: edgeResult.text,
+      ttsText: edgeResult.ttsText,
+      detectedLanguage: edgeResult.detectedLanguage,
+      ttsLocale: activeLang.ttsLocale,
+      sttLocale: activeLang.sttLocale,
+      weatherData: edgeResult.weatherData,
+      weatherContextUsed: edgeResult.isGroundedOnCache,
+      isOfflineEdgeAi: true,
+      offlineCacheAge: edgeResult.cacheAge,
     );
   }
 
