@@ -1,9 +1,11 @@
+import re
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from ..services import ai_service
 from ..services.weather_service import weather_service
 from ..services.spatial_downscaling import spatial_downscaling_engine
+from ..services.panchangam_service import is_panchangam_query, panchangam_service
 
 router = APIRouter()
 
@@ -46,6 +48,43 @@ async def chat_completions(req: ChatRequest):
                 )
         except Exception as e:
             print(f"Error fetching telemetry: {e}")
+
+    # Hybrid RAG: Attach Panchangam + Weather fusion when cultural/agro/muhurtham intent is detected
+    if is_panchangam_query(req.message):
+        try:
+            p_lat = lat if lat is not None else 28.6139
+            p_lon = lon if lon is not None else 77.2090
+            msg_lower = req.message.lower()
+            date_match = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", req.message)
+            date_hint = (
+                date_match.group(1)
+                if date_match
+                else ("tomorrow" if "tomorrow" in msg_lower else "today")
+            )
+            fused_panchangam = panchangam_service.fuse_panchangam_and_weather(
+                lat=p_lat,
+                lon=p_lon,
+                weather_data=structured_weather,
+                query=req.message,
+                date_str=date_hint,
+            )
+            upcoming_windows = None
+            if any(w in msg_lower for w in ("week", "upcoming", "best", "when", "next")):
+                daily = weather_service.get_daily_forecast_list(p_lat, p_lon, days=7)
+                upcoming_windows = panchangam_service.scan_upcoming_windows(
+                    lat=p_lat,
+                    lon=p_lon,
+                    daily_forecast=daily,
+                    activity=fused_panchangam.get("activity_focus", "general"),
+                )
+                fused_panchangam["upcoming_windows"] = upcoming_windows[:5]
+
+            if structured_weather is None:
+                structured_weather = {}
+            structured_weather["panchangam_fusion"] = fused_panchangam
+            context_prefix += f"[{panchangam_service.format_for_ai(fused_panchangam, upcoming_windows)}] "
+        except Exception as e:
+            print(f"Error computing Panchangam fusion: {e}")
 
     if not ai_service.ai_agent:
         # Fallback if Gemini key is missing

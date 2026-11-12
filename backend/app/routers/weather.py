@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from typing import Optional
 from ..services.weather_service import weather_service
 from ..services.spatial_downscaling import spatial_downscaling_engine
+from ..services.panchangam_service import panchangam_service
 
 router = APIRouter()
 
@@ -78,4 +79,37 @@ async def get_forecast(lat: float, lon: float, days: int = 7):
         "forecast": [
             {"day": "Today", "max_temp": data["temp_max"], "min_temp": data["temp_min"], "condition": data["condition"]},
         ]
+    }
+
+@router.get("/panchangam")
+async def get_panchangam_weather_fusion(
+    lat: float = 17.3850,
+    lon: float = 78.4867,
+    date: Optional[str] = None,
+    activity: str = "general",
+    days: int = 1,
+):
+    """
+    Hybrid RAG Panchangam + Weather Fusion endpoint (F2.1).
+    Returns astronomical Drik Panchangam (Tithi, Nakshatra, Yoga, Karana, Masa, Ritu,
+    Abhijit Muhurtham, Rahu Kaal), fused meteorological alignment, RAG context, and
+    optional multi-day auspicious window rankings when days > 1.
+    """
+    weather_data = weather_service.get_structured_weather_data(lat, lon)
+    fused = panchangam_service.fuse_panchangam_and_weather(
+        lat=lat,
+        lon=lon,
+        weather_data=weather_data,
+        query=activity,
+        date_str=date,
+        activity=activity,
+    )
+    if days > 1:
+        daily = weather_service.get_daily_forecast_list(lat, lon, days=days)
+        fused["upcoming_windows"] = panchangam_service.scan_upcoming_windows(
+            lat=lat, lon=lon, daily_forecast=daily, activity=activity
+        )
+    return {
+        "location": {"lat": lat, "lon": lon},
+        "panchangam_fusion": fused,
     }

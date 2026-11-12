@@ -4,7 +4,39 @@ from .weather_service import weather_service
 from .earth_engine_service import earth_engine_service
 from .weathernext_service import weathernext_service
 from .spatial_downscaling import spatial_downscaling_engine
+from .panchangam_service import panchangam_service
 import asyncio
+
+_INDIAN_CITY_COORDS = {
+    "hyderabad": (17.3850, 78.4867),
+    "delhi": (28.6139, 77.2090),
+    "new delhi": (28.6139, 77.2090),
+    "mumbai": (19.0760, 72.8777),
+    "bengaluru": (12.9716, 77.5946),
+    "bangalore": (12.9716, 77.5946),
+    "chennai": (13.0827, 80.2707),
+    "kolkata": (22.5726, 88.3639),
+    "pune": (18.5204, 73.8567),
+    "varanasi": (25.3176, 82.9739),
+    "jaipur": (26.9124, 75.7873),
+    "tirupati": (13.6288, 79.4192),
+    "shimla": (31.1048, 77.1734),
+    "ooty": (11.4008, 76.7358),
+}
+
+def _resolve_location_coords(location: str) -> tuple[float, float]:
+    """Parse 'lat,lon' or match known Indian city names, defaulting to New Delhi."""
+    if "," in location:
+        try:
+            parts = [p.strip() for p in location.split(",")[:2]]
+            return float(parts[0]), float(parts[1])
+        except ValueError:
+            pass
+    cleaned = location.strip().lower()
+    for city, coords in _INDIAN_CITY_COORDS.items():
+        if city in cleaned:
+            return coords
+    return 28.6139, 77.2090
 
 # --- Tool Definitions ---
 
@@ -31,7 +63,13 @@ def get_satellite_weather_layer(location: str) -> str:
 
 def get_weather_forecast(location: str) -> str:
     """Fetches multi-day weather forecast from Open-Meteo."""
-    return f"Forecast for {location}: Next 3 days will see highs of 30°C and lows of 22°C with intermittent rain."
+    lat, lon = _resolve_location_coords(location)
+    daily = weather_service.get_daily_forecast_list(lat, lon, days=5)
+    summary = ", ".join(
+        f"{d['date']}: {d['condition']} {d['temp_min']}-{d['temp_max']}°C (rain {d['rain_chance']}%)"
+        for d in daily[:5]
+    )
+    return f"5-Day Forecast near ({lat}, {lon}): {summary}."
 
 def get_weather_alerts(location: str) -> str:
     """Checks for severe weather warnings or alerts for a location."""
@@ -76,6 +114,44 @@ def get_hyperlocal_downscaled_forecast(location: str) -> str:
         "Provide coordinates as 'lat,lon' for 1km microclimate adjustments."
     )
 
+def get_panchangam_weather_fusion(
+    location: str,
+    date: str = "today",
+    activity: str = "general",
+    scan_days: int = 1,
+) -> str:
+    """
+    Hybrid RAG tool fusing Vedic astronomical Drik Panchangam (Tithi, Paksha, Nakshatra,
+    Yoga, Karana, Masa, Ritu, Surya Nakshatra, Abhijit Muhurtham, Rahu Kaal, Sunrise/Sunset)
+    with live meteorological telemetry and upcoming multi-day forecast windows.
+    Use for farming/sowing, wedding Muhurtham, Ugadi/Diwali/festival weather, and auspicious timing queries.
+    Args:
+        location: 'lat,lon' or city name (e.g. '17.385,78.4867' or 'Hyderabad').
+        date: 'today', 'tomorrow', or 'YYYY-MM-DD'.
+        activity: 'farming', 'wedding', 'festival', 'travel', or 'general'.
+        scan_days: Set to 7 when searching for the best upcoming auspicious weather window.
+    """
+    try:
+        lat, lon = _resolve_location_coords(location)
+        weather_data = weather_service.get_structured_weather_data(lat, lon)
+        fused = panchangam_service.fuse_panchangam_and_weather(
+            lat=lat,
+            lon=lon,
+            weather_data=weather_data,
+            query=f"{activity} {date}",
+            date_str=date,
+            activity=activity,
+        )
+        upcoming = None
+        if scan_days > 1:
+            daily = weather_service.get_daily_forecast_list(lat, lon, days=min(10, scan_days))
+            upcoming = panchangam_service.scan_upcoming_windows(
+                lat=lat, lon=lon, daily_forecast=daily, activity=activity
+            )
+        return panchangam_service.format_for_ai(fused, upcoming_windows=upcoming)
+    except Exception as exc:
+        return f"Panchangam + Weather fusion error: {exc}"
+
 # --- Agent Setup ---
 
 class WeatherAIAgent:
@@ -88,6 +164,7 @@ class WeatherAIAgent:
             get_weather_alerts,
             get_weathernext_forecast,
             get_hyperlocal_downscaled_forecast,
+            get_panchangam_weather_fusion,
         ]
         self.primary_model = 'gemini-3.5-flash-lite'
         self.fallback_model = 'gemini-3.5-flash'
@@ -101,10 +178,12 @@ class WeatherAIAgent:
                 tools=self.tools,
                 system_instruction=(
                     "You are WeatherGPT, an advanced domain-specialized AI meteorological assistant "
-                    "powered by hyper-local 1km Spatial Downscaling (SRTM elevation + ESA WorldCover UHI/canopy + coastal moderation). "
+                    "powered by hyper-local 1km Spatial Downscaling (SRTM elevation + ESA WorldCover UHI/canopy + coastal moderation) "
+                    "and a Hybrid Panchangam + Weather RAG pipeline (astronomical Drik Tithi, Nakshatra, Muhurtham, and agro-meteorological alignment). "
                     "You can understand and respond fluently in any requested language (e.g. English, Hindi, Telugu, Tamil, Kannada, Bengali, Spanish, French, German, etc.). "
                     "Always answer naturally and accurately in the user's selected language or prompt language, while preserving correct weather metrics. "
                     "When spatial downscaling context is provided, briefly highlight the hyper-local microclimate factors (such as elevation temperature offset, urban heat island, or coastal breeze) that distinguish the user's exact location from city-wide forecasts. "
+                    "When Panchangam / lunisolar / Muhurtham / farming context is present or requested, weave the exact Tithi, Nakshatra, Masa/Ritu, Abhijit Muhurtham vs Rahu Kaal windows, and weather alignment score directly into your guidance. "
                     "When answering weather inquiries, always provide: "
                     "1. A concise overview of the conditions and key trends. "
                     "2. Actionable lifestyle advice tailored to the weather: "
