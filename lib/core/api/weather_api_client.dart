@@ -124,6 +124,12 @@ class WeatherApiClient {
 
     // Route directly to on-device Offline Edge AI if user forced offline mode
     if (forceOfflineMode) {
+      try {
+        final cached = await OfflineWeatherCache.instance.getCachedTelemetry();
+        if (cached == null && lat != null && lon != null) {
+          await OfflineWeatherCache.instance.syncFromLiveOpenMeteo(lat: lat, lon: lon);
+        }
+      } catch (_) {}
       return _runOfflineEdgeAi(
         message,
         lat: lat,
@@ -183,6 +189,14 @@ class WeatherApiClient {
     }
 
     // 3. Offline Fallback -> Seamless routing to On-Device Quantized Edge AI (Qwen2.5-0.5B)
+    // If the cache is empty or stale, attempt a direct on-device Open-Meteo sync first
+    try {
+      final cached = await OfflineWeatherCache.instance.getCachedTelemetry();
+      if (cached == null && lat != null && lon != null) {
+        await OfflineWeatherCache.instance.syncFromLiveOpenMeteo(lat: lat, lon: lon);
+      }
+    } catch (_) {}
+
     return _runOfflineEdgeAi(
       message,
       lat: lat,

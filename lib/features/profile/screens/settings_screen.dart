@@ -18,6 +18,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isEditing = false;
   bool _isSaving = false;
   bool _offlineMode = WeatherApiClient.forceOfflineMode;
+  bool _isSyncingCache = false;
   String _cacheSummary = 'Loading cache...';
 
   @override
@@ -40,11 +41,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
         if (data != null) {
           final loc = data['location_name'] ?? 'Local Area';
           final temp = data['temperature'] ?? '--';
-          _cacheSummary = '$loc • $temp°C (Cached $cacheAge)';
+          final cond = data['condition'] ?? '';
+          _cacheSummary = '$loc • $temp°C ${cond.isNotEmpty ? '($cond) ' : ''}• Cached $cacheAge';
         } else {
           _cacheSummary = 'No offline telemetry cached yet';
         }
       });
+    }
+  }
+
+  Future<void> _syncLiveCache() async {
+    setState(() => _isSyncingCache = true);
+    try {
+      final res = await OfflineWeatherCache.instance.syncFromLiveOpenMeteo();
+      await _loadOfflineEdgeState();
+      if (mounted) {
+        final loc = res?['location_name'] ?? 'Local Area';
+        final temp = res?['temperature'] ?? '--';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Live cache refreshed: $loc ($temp°C)'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: const Color(0xFF2E7D32),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to sync live weather: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSyncingCache = false);
+    }
+  }
+
+  Future<void> _clearCache() async {
+    await OfflineWeatherCache.instance.clear();
+    await _loadOfflineEdgeState();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Offline telemetry cache cleared'),
+          duration: Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -497,12 +539,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Cache updated: $_cacheSummary'),
+                          content: Text('Cache status: $_cacheSummary'),
                           duration: const Duration(seconds: 2),
                         ),
                       );
                     }
                   },
+                ),
+
+                const SizedBox(height: 10),
+
+                // Sync Live Weather into Cache
+                _SettingsTile(
+                  icon: Icons.sync_rounded,
+                  title: 'Sync Live Weather Cache',
+                  subtitle: _isSyncingCache
+                      ? 'Fetching live satellite & ground telemetry...'
+                      : 'Refresh local cache with live Open-Meteo readings',
+                  onTap: _isSyncingCache ? null : _syncLiveCache,
+                ),
+
+                const SizedBox(height: 10),
+
+                // Clear Offline Cache
+                _SettingsTile(
+                  icon: Icons.delete_sweep_outlined,
+                  title: 'Clear Cache',
+                  subtitle: 'Purge local telemetry cache to force fresh re-sync',
+                  onTap: _clearCache,
                 ),
               ],
             ),

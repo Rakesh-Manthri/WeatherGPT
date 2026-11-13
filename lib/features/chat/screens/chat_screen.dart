@@ -433,6 +433,54 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
 
+            // Offline Edge AI Banner (visible when user enabled Force Offline Mode)
+            if (WeatherApiClient.forceOfflineMode)
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF3E0),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFFB74D)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.offline_bolt_rounded, size: 18, color: Color(0xFFF57C00)),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Offline Edge AI Active (Qwen2.5-0.5B)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFE65100),
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      onPressed: () async {
+                        await WeatherApiClient.setForceOfflineMode(false);
+                        if (mounted) setState(() {});
+                      },
+                      child: const Text(
+                        'Switch Online',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFFE65100),
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
             // Messages List
             Expanded(
               child: ListView.builder(

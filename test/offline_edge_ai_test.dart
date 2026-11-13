@@ -44,6 +44,26 @@ void main() {
       expect(await cache.getCachedTelemetry(), isNull);
       expect(await cache.hasValidCache(), isFalse);
     });
+
+    test('automatically detects and purges obsolete static 27.5°C mock fallback', () async {
+      final cache = OfflineWeatherCache.instance;
+      // Inject the old buggy static fallback
+      final obsoleteData = {
+        'location_name': 'Your Location',
+        'latitude': 17.3850,
+        'longitude': 78.4867,
+        'temperature': 27.5,
+        'apparent_temperature': 29.1,
+        'condition': 'Partly Cloudy',
+        'humidity': 62,
+        'rain_chance': 5,
+      };
+      await cache.saveTelemetry(obsoleteData);
+
+      // getCachedTelemetry should detect obsolete 27.5°C and purge it
+      final purged = await cache.getCachedTelemetry(purgeStaleFallback: true);
+      expect(purged, isNull);
+    });
   });
 
   group('OfflineEdgeAiService Inference & Grounding Tests', () {

@@ -125,8 +125,10 @@ class WeatherNextService:
                 bucket=self.BUCKET,
                 prefix=prefix,
                 client_options={
-                    "default_headers": {"x-goog-user-project": self._project_id}
+                    "default_headers": {"x-goog-user-project": self._project_id},
+                    "timeout": "2s",
                 },
+                retry_config={"max_retries": 1},
             )
 
             zstore = zarr.storage.ObjectStore(gcs_store)
