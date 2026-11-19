@@ -8,8 +8,12 @@ from ..services.weathernext_service import weathernext_service
 router = APIRouter()
 
 @router.get("/current")
-async def get_current_weather(lat: float, lon: float):
-    data = weather_service.get_structured_weather_data(lat, lon)
+async def get_current_weather(
+    lat: float,
+    lon: float,
+    provider: Optional[str] = Query(None, description="Primary provider preference: 'weathernext' or 'openmeteo'"),
+):
+    data = weather_service.get_structured_weather_data(lat, lon, provider=provider)
     return {
         "location": {"lat": lat, "lon": lon},
         "data_source": data.get("data_source", "WeatherNext 3"),

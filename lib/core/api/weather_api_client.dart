@@ -97,10 +97,29 @@ class WeatherApiClient {
   static const String _forceOfflineKey = 'force_offline_edge_mode';
   static bool forceOfflineMode = false;
 
+  static const String _primaryProviderKey = 'primary_weather_provider';
+  static String primaryProvider = 'weathernext'; // 'weathernext' or 'openmeteo'
+
+  static Future<void> loadProviderPreference() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      primaryProvider = prefs.getString(_primaryProviderKey) ?? 'weathernext';
+    } catch (_) {}
+  }
+
+  static Future<void> setPrimaryProvider(String provider) async {
+    primaryProvider = provider;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_primaryProviderKey, provider);
+    } catch (_) {}
+  }
+
   static Future<void> loadOfflinePreference() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       forceOfflineMode = prefs.getBool(_forceOfflineKey) ?? false;
+      primaryProvider = prefs.getString(_primaryProviderKey) ?? 'weathernext';
     } catch (_) {}
   }
 
@@ -125,7 +144,7 @@ class WeatherApiClient {
     // Route directly to on-device Offline Edge AI if user forced offline mode
     if (forceOfflineMode) {
       try {
-        final cached = await OfflineWeatherCache.instance.getCachedTelemetry();
+        final cached = await OfflineWeatherCache.instance.getCachedTelemetry(provider: primaryProvider);
         if (cached == null && lat != null && lon != null) {
           await OfflineWeatherCache.instance.syncFromLiveOpenMeteo(lat: lat, lon: lon);
         }
@@ -145,6 +164,7 @@ class WeatherApiClient {
       'session_id': sessionId,
       'language': selectedLang,
       'voice_mode': voiceMode,
+      'provider': primaryProvider,
     };
 
     final candidates = _candidateUrls;
@@ -158,7 +178,7 @@ class WeatherApiClient {
           Map<String, dynamic>.from(response.data as Map),
         );
         if (res.weatherData != null) {
-          OfflineWeatherCache.instance.saveTelemetry(res.weatherData!);
+          OfflineWeatherCache.instance.saveTelemetry(res.weatherData!, provider: primaryProvider);
         }
         return res;
       } catch (_) {
@@ -180,7 +200,7 @@ class WeatherApiClient {
           Map<String, dynamic>.from(response.data as Map),
         );
         if (res.weatherData != null) {
-          OfflineWeatherCache.instance.saveTelemetry(res.weatherData!);
+          OfflineWeatherCache.instance.saveTelemetry(res.weatherData!, provider: primaryProvider);
         }
         return res;
       } catch (_) {
@@ -191,7 +211,7 @@ class WeatherApiClient {
     // 3. Offline Fallback -> Seamless routing to On-Device Quantized Edge AI (Qwen2.5-0.5B)
     // If the cache is empty or stale, attempt a direct on-device Open-Meteo sync first
     try {
-      final cached = await OfflineWeatherCache.instance.getCachedTelemetry();
+      final cached = await OfflineWeatherCache.instance.getCachedTelemetry(provider: primaryProvider);
       if (cached == null && lat != null && lon != null) {
         await OfflineWeatherCache.instance.syncFromLiveOpenMeteo(lat: lat, lon: lon);
       }

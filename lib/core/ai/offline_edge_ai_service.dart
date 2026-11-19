@@ -269,12 +269,17 @@ class OfflineEdgeAiService {
 
       final cleanTts = SpeechSanitizer.cleanForSpeech(reply, language: activeLang);
 
+      final isSmallNonWeatherQuery = intent == 'greeting' ||
+          intent == 'gratitude' ||
+          intent == 'capabilities' ||
+          intent == 'smalltalk';
+
       return EdgeInferenceResult(
         text: reply,
         ttsText: cleanTts,
-        weatherData: cachedTelemetry,
+        weatherData: isSmallNonWeatherQuery ? null : cachedTelemetry,
         detectedLanguage: activeLang.englishName,
-        isGroundedOnCache: hasCache,
+        isGroundedOnCache: hasCache && !isSmallNonWeatherQuery,
         cacheAge: cacheAge,
       );
     } finally {
@@ -286,48 +291,217 @@ class OfflineEdgeAiService {
   }
 
   /// Semantic Intent Classifier matching Qwen2.5-0.5B ChatML extraction
+  /// Semantic Intent Classifier matching Qwen2.5-0.5B ChatML extraction
   String _extractIntent(String query) {
-    final q = query.toLowerCase();
+    final q = query.trim().toLowerCase();
+    final clean = q.replaceAll(RegExp(r'[^\w\s]'), '');
+
+    // 1. Gratitude
+    if (clean == 'thanks' ||
+        clean == 'thank you' ||
+        clean == 'dhanyawad' ||
+        clean == 'dhanyavadalu' ||
+        clean == 'shukriya' ||
+        q.contains('ధన్యవాదాలు') ||
+        q.contains('धन्यवाद') ||
+        q.contains('आभार') ||
+        q.contains('thank you') ||
+        q.contains('thanks')) {
+      return 'gratitude';
+    }
+
+    // 2. Greetings & Salutations
+    final greetingStarters = [
+      'hi', 'hello', 'hey', 'namaste', 'namaskar', 'namaskaram',
+      'good morning', 'good afternoon', 'good evening', 'good night',
+      'how are you', 'how do you do', 'sup', 'yo'
+    ];
+    final isGreeting = greetingStarters.any((g) => clean == g || clean.startsWith('$g ') || clean.endsWith(' $g') || clean.contains(g)) ||
+        q.contains('నమస్కారం') ||
+        q.contains('బాగున్నారా') ||
+        q.contains('नमस्ते') ||
+        q.contains('नमस्कार') ||
+        q.contains('शुभ प्रभात') ||
+        q.contains('कसे आहात');
+    if (isGreeting &&
+        !q.contains('rain') &&
+        !q.contains('temp') &&
+        !q.contains('weather') &&
+        !q.contains('wind') &&
+        !q.contains('forecast')) {
+      return 'greeting';
+    }
+
+    // 3. System Capabilities & Identity
+    if (clean == 'help' ||
+        q.contains('who are you') ||
+        q.contains('what can you do') ||
+        q.contains('what are you') ||
+        q.contains('capabilities') ||
+        q.contains('features') ||
+        q.contains('మీరు ఎవరు') ||
+        q.contains('నువ్వు ఎవరు') ||
+        q.contains('तुम कौन हो') ||
+        q.contains('काय करू शकता')) {
+      return 'capabilities';
+    }
+
+    // 4. Panchangam & Vedic Farming
     if (q.contains('panchang') ||
         q.contains('tithi') ||
         q.contains('muhurth') ||
         q.contains('sow') ||
         q.contains('farm') ||
+        q.contains('farming') ||
+        q.contains('crop') ||
         q.contains('పంట') ||
         q.contains('తిథి') ||
+        q.contains('ముహూర్తం') ||
+        q.contains('ముహూర్త') ||
+        q.contains('ముహూర్తాలు') ||
+        q.contains('నాట్లు') ||
         q.contains('मुहूर्त') ||
-        q.contains('पेरणी')) {
+        q.contains('पेरणी') ||
+        q.contains('शेती')) {
       return 'panchangam_farming';
     }
+
+    // 5. Rain & Precipitation
     if (q.contains('rain') ||
         q.contains('umbrella') ||
         q.contains('shower') ||
         q.contains('storm') ||
+        q.contains('precip') ||
+        q.contains('drizzle') ||
         q.contains('వర్షం') ||
+        q.contains('వాన') ||
+        q.contains('చినుకులు') ||
         q.contains('बारिश') ||
-        q.contains('पाऊस')) {
+        q.contains('वर्षा') ||
+        q.contains('पाऊस') ||
+        q.contains('छत्री')) {
       return 'rain_forecast';
     }
+
+    // 6. Clothing & Attire Guidance
     if (q.contains('wear') ||
         q.contains('cloth') ||
         q.contains('jacket') ||
+        q.contains('attire') ||
+        q.contains('sweater') ||
         q.contains('బట్టలు') ||
-        q.contains('कपड़े')) {
+        q.contains('దుస్తులు') ||
+        q.contains('कपड़े') ||
+        q.contains('कपडे')) {
       return 'clothing_attire';
     }
+
+    // 7. Outdoor Fitness & Running
     if (q.contains('run') ||
         q.contains('jog') ||
         q.contains('walk') ||
         q.contains('exercise') ||
         q.contains('outdoor') ||
+        q.contains('fitness') ||
+        q.contains('workout') ||
         q.contains('వ్యాయామం') ||
-        q.contains('घूमने')) {
+        q.contains('నడక') ||
+        q.contains('घूमने') ||
+        q.contains('कसरत') ||
+        q.contains('व्यायाम')) {
       return 'outdoor_fitness';
     }
-    if (q.contains('air') || q.contains('aqi') || q.contains('pollution') || q.contains('గాలి')) {
+
+    // 8. Air Quality (AQI)
+    if (q.contains('aqi') ||
+        q.contains('air quality') ||
+        q.contains('pollution') ||
+        q.contains('smog') ||
+        q.contains('గాలి నాణ్యత') ||
+        q.contains('కాలుష్యం') ||
+        q.contains('प्रदूषण') ||
+        q.contains('हवेची गुणवत्ता')) {
       return 'air_quality';
     }
+
+    // 9. Specific Temperature / Heat / Cold
+    if (q.contains('temp') ||
+        q.contains('hot') ||
+        q.contains('cold') ||
+        q.contains('chill') ||
+        q.contains('warm') ||
+        q.contains('heat') ||
+        q.contains('degree') ||
+        q.contains('celsius') ||
+        q.contains('ఉష్ణోగ్రత') ||
+        q.contains('ఎండ') ||
+        q.contains('చలి') ||
+        q.contains('तापमान') ||
+        q.contains('गरमी') ||
+        q.contains('ठंड')) {
+      return 'temperature';
+    }
+
+    // 10. Specific Wind & Breezes
+    if (q.contains('wind') ||
+        q.contains('breeze') ||
+        q.contains('gust') ||
+        q.contains('windy') ||
+        q.contains('గాలి వేగం') ||
+        q.contains('తుఫాన్') ||
+        q.contains('हवा की गति') ||
+        q.contains('आंधी') ||
+        q.contains('वारा')) {
+      return 'wind';
+    }
+
+    // 11. Specific Humidity & Moisture
+    if (q.contains('humid') ||
+        q.contains('humidity') ||
+        q.contains('moisture') ||
+        q.contains('sweat') ||
+        q.contains('తేమ') ||
+        q.contains('ఉక్కపోత') ||
+        q.contains('उमस') ||
+        q.contains('दमट')) {
+      return 'humidity';
+    }
+
+    // 12. Specific Sky & Cloud Conditions
+    if (q.contains('sky') ||
+        q.contains('cloud') ||
+        q.contains('sunny') ||
+        q.contains('sun') ||
+        q.contains('fog') ||
+        q.contains('overcast') ||
+        q.contains('మేఘాలు') ||
+        q.contains('ఎండగా') ||
+        q.contains('बादल') ||
+        q.contains('धूप') ||
+        q.contains('ढग')) {
+      return 'sky_condition';
+    }
+
+    // 13. General smalltalk fallback for very short non-weather phrases
+    final words = clean.split(' ');
+    if (words.length <= 2 &&
+        !q.contains('weather') &&
+        !q.contains('forecast') &&
+        !q.contains('వాతావరణం') &&
+        !q.contains('मौसम') &&
+        !q.contains('हवामान')) {
+      return 'smalltalk';
+    }
+
     return 'current_weather';
+  }
+
+  String _getAqiLabel(int aqi) {
+    if (aqi <= 50) return 'Good';
+    if (aqi <= 100) return 'Moderate';
+    if (aqi <= 150) return 'Unhealthy for Sensitive Groups';
+    if (aqi <= 200) return 'Unhealthy';
+    return 'Very Unhealthy';
   }
 
   /// Grounded synthesis avoiding hallucinations
@@ -432,6 +606,67 @@ class OfflineEdgeAiService {
   }) {
     final prefix = '*(Offline Edge AI • Cached $cacheAge)*\n\n';
 
+    if (intent == 'greeting') {
+      return '*(Offline Edge AI • On-Device Qwen2.5)*\n\n'
+          'Hello! I am WeatherGPT running offline on your device. Currently in $loc it is **$temp°C** and $cond. How can I assist you with your weather or forecast today?';
+    }
+
+    if (intent == 'gratitude') {
+      return '*(Offline Edge AI)*\n\n'
+          'You\'re very welcome! Stay safe and comfortable in $loc. Feel free to ask anytime you need local weather updates or farming advice.';
+    }
+
+    if (intent == 'capabilities') {
+      return '*(Offline Edge AI • On-Device Qwen2.5)*\n\n'
+          'I am WeatherGPT\'s On-Device Intelligence running quantized SLM (Qwen2.5-0.5B-Instruct). Even completely without internet, I can:\n'
+          '• Provide temperature, humidity, wind, and sky outlooks\n'
+          '• Forecast rain probabilities and advise on umbrellas/jackets\n'
+          '• Give fitness and outdoor exercise safety ratings\n'
+          '• Deliver Vedic Panchangam and agricultural advisories\n'
+          '• Check local air quality (AQI) based on cached telemetry';
+    }
+
+    if (intent == 'smalltalk') {
+      return '*(Offline Edge AI)*\n\n'
+          'I\'m running smoothly on your device! Currently in $loc it is $temp°C ($cond). What meteorological information would you like to explore?';
+    }
+
+    if (intent == 'temperature') {
+      final comfort = (temp as num) > 32
+          ? 'It feels quite hot outside; remember to stay well-hydrated!'
+          : temp < 18
+              ? 'It feels cool outside; consider carrying a light jacket.'
+              : 'Conditions feel mild and pleasant.';
+      return '$prefix**Temperature in $loc:** The current temperature is **$temp°C** ($cond). $comfort Humidity is at $hum% with winds of $wind km/h.';
+    }
+
+    if (intent == 'wind') {
+      final desc = (wind as num) > 25
+          ? 'Breezy to gusty winds; secure any loose outdoor items.'
+          : 'Gentle to moderate breeze.';
+      return '$prefix**Wind Conditions in $loc:** Wind speed is currently **$wind km/h** under $cond conditions. $desc';
+    }
+
+    if (intent == 'humidity') {
+      final desc = (hum as num) > 70
+          ? 'High humidity may feel sticky and warm.'
+          : 'Comfortable ambient moisture levels.';
+      return '$prefix**Humidity in $loc:** Relative humidity is at **$hum%** with a temperature of $temp°C. $desc';
+    }
+
+    if (intent == 'sky_condition') {
+      return '$prefix**Sky & Visibility in $loc:** Current conditions are **$cond** with a temperature of $temp°C. Rain probability is $rain%.';
+    }
+
+    if (intent == 'air_quality') {
+      final desc = (aqi as num) <= 50
+          ? 'Air quality is excellent; ideal for outdoor activities.'
+          : aqi <= 100
+              ? 'Moderate air quality; acceptable for most people.'
+              : 'Unhealthy air quality; sensitive groups should limit outdoor exertion.';
+      return '$prefix**Air Quality in $loc:** **AQI $aqi** (${_getAqiLabel(aqi.toInt())}). $desc';
+    }
+
     if (intent == 'rain_forecast') {
       final gear = (rain as num) > 40
           ? 'Carry an umbrella or rain cover.'
@@ -485,11 +720,43 @@ class OfflineEdgeAiService {
   }) {
     final prefix = '*(ऑफ़लाइन एज एआई • $cacheAge का डेटा)*\n\n';
 
+    if (intent == 'greeting') {
+      return '*(ऑफ़लाइन एज एआई • ऑन-डिवाइस Qwen2.5)*\n\n'
+          'नमस्ते! मैं WeatherGPT हूँ, जो बिना इंटरनेट के आपके डिवाइस पर चल रहा है। $loc में अभी तापमान **$temp°C** है और मौसम $cond है। मैं आज आपकी क्या सहायता कर सकता हूँ?';
+    }
+
+    if (intent == 'gratitude') {
+      return '*(ऑफ़लाइन एज एआई)*\n\n'
+          'आपका बहुत-बहुत स्वागत है! $loc में सुरक्षित रहें। किसी भी मौसम या कृषि संबंधी जानकारी के लिए कभी भी पूछ सकते हैं।';
+    }
+
+    if (intent == 'capabilities') {
+      return '*(ऑफ़लाइन एज एआई)*\n\n'
+          'मैं WeatherGPT का ऑन-डिवाइस इंटेलिजेंस हूँ। बिना इंटरनेट के भी मैं तापमान, बारिश की संभावना, हवा, उमस, कपड़ों की सलाह, आउटडोर फिटनेस और पंचांग आधारित कृषि सलाह दे सकता हूँ।';
+    }
+
+    if (intent == 'temperature') {
+      return '$prefix**$loc में तापमान:** वर्तमान तापमान **$temp°C** ($cond) है। उमस $hum% और हवा की गति $wind किमी/घंटा है।';
+    }
+
+    if (intent == 'wind') {
+      return '$prefix**$loc में हवा की गति:** हवा **$wind किमी/घंटा** की रफ्तार से चल रही है ($cond)।';
+    }
+
+    if (intent == 'humidity') {
+      return '$prefix**$loc में उमस (आर्द्रता):** वर्तमान उमस **$hum%** है और तापमान $temp°C है।';
+    }
+
     if (intent == 'rain_forecast') {
       final gear = (rain as num) > 40
           ? 'बारिश की संभावना अधिक है, छाता साथ रखें।'
           : 'आज बारिश की संभावना बहुत कम है।';
       return '$prefix**$loc में बारिश का अनुमान:** $rain% ($cond)। $gear हवा की गति $wind किमी/घंटा है।';
+    }
+
+    if (intent == 'clothing_attire') {
+      final attire = (temp as num) > 26 ? 'सूती और हल्के कपड़े' : 'हल्की जैकेट या गर्म कपड़े';
+      return '$prefix**$loc के लिए कपड़ों की सलाह:** $attire पहनें। तापमान $temp°C और उमस $hum% है।';
     }
 
     if (intent == 'panchangam_farming') {
@@ -500,6 +767,10 @@ class OfflineEdgeAiService {
           '• **तिथि:** $tithi\n'
           '• **मौसम:** $cond, तापमान $temp°C, बारिश $rain%\n'
           '• **सलाह:** $advice';
+    }
+
+    if (intent == 'outdoor_fitness') {
+      return '$prefix**$loc में आउटडोर फिटनेस:** तापमान $temp°C और AQI $aqi है। व्यायाम के लिए सुबह का समय उत्तम है।';
     }
 
     return '$prefix**$loc में स्थानीय मौसम:**\n'
@@ -522,11 +793,43 @@ class OfflineEdgeAiService {
   }) {
     final prefix = '*(ఆఫ్‌లైన్ ఎడ్జ్ AI • $cacheAge డేటా)*\n\n';
 
+    if (intent == 'greeting') {
+      return '*(ఆఫ్‌లైన్ ఎడ్జ్ AI • ఆన్-డివైస్ Qwen2.5)*\n\n'
+          'నమస్కారం! నేను మీ పరికరంలో ఆఫ్‌లైన్‌లో పనిచేసే WeatherGPTని. ప్రస్తుతం $loc లో ఉష్ణోగ్రత **$temp°C** మరియు $cond గా ఉంది. ఈ రోజు మీకు ఏ వాతావరణ సమాచారం కావాలి?';
+    }
+
+    if (intent == 'gratitude') {
+      return '*(ఆఫ్‌లైన్ ఎడ్జ్ AI)*\n\n'
+          'మీకు స్వాగతం! $loc లో సురక్షితంగా ఉండండి. వాతావరణ లేదా వ్యవసాయ సూచనల కోసం ఎప్పుడైనా అడగవచ్చు.';
+    }
+
+    if (intent == 'capabilities') {
+      return '*(ఆఫ్‌లైన్ ఎడ్జ్ AI)*\n\n'
+          'నేను ఇంటర్నెట్ లేకుండా పనిచేసే WeatherGPT ఆన్-డివైస్ ఇంటెలిజెన్స్‌ని. ఉష్ణోగ్రత, వర్ష సూచన, గాలి వేగం, దుస్తుల సూచనలు, అవుట్‌డోర్ వ్యాయామం మరియు పంచాంగ వ్యవసాయ సూచనలను అందించగలను.';
+    }
+
+    if (intent == 'temperature') {
+      return '$prefix**$loc లో ఉష్ణోగ్రత:** ప్రస్తుత ఉష్ణోగ్రత **$temp°C** ($cond). తేమ $hum% మరియు గాలి వేగం $wind కి.మీ/గం.';
+    }
+
+    if (intent == 'wind') {
+      return '$prefix**$loc లో గాలి సమాచారం:** గాలి వేగం ప్రస్తుతం **$wind కి.మీ/గం** ($cond).';
+    }
+
+    if (intent == 'humidity') {
+      return '$prefix**$loc లో తేమ:** గాలిలో తేమ శాతం **$hum%**, ఉష్ణోగ్రత $temp°C.';
+    }
+
     if (intent == 'rain_forecast') {
       final gear = (rain as num) > 40
           ? 'వర్షం పడే అవకాశం ఉంది, గొడుగు వెంట ఉంచుకోండి.'
           : 'ఈ రోజు వర్ష సూచన తక్కువగా ఉంది.';
       return '$prefix**$loc వర్ష సూచన:** $rain% అవకాశం ($cond). $gear గాలి వేగం $wind కి.మీ/గం.';
+    }
+
+    if (intent == 'clothing_attire') {
+      final attire = (temp as num) > 26 ? 'తేలికపాటి నూలు దుస్తులు' : 'తేలికపాటి జాకెట్ లేదా వెచ్చని దుస్తులు';
+      return '$prefix**$loc దుస్తుల సూచన:** $attire ధరించండి. ఉష్ణోగ్రత $temp°C మరియు తేమ $hum%.';
     }
 
     if (intent == 'panchangam_farming') {
@@ -537,6 +840,10 @@ class OfflineEdgeAiService {
           '• **తిథి:** $tithi\n'
           '• **వాతావరణం:** $cond, ఉష్ణోగ్రత $temp°C, వర్షం $rain%\n'
           '• **సూచన:** $advice';
+    }
+
+    if (intent == 'outdoor_fitness') {
+      return '$prefix**$loc అవుట్‌డోర్ ఫిట్‌నెస్:** ఉష్ణోగ్రత $temp°C, గాలి నాణ్యత AQI $aqi.';
     }
 
     return '$prefix**$loc ఆఫ్‌లైన్ వాతావరణ సమాచారం:**\n'
@@ -558,6 +865,16 @@ class OfflineEdgeAiService {
     required String cacheAge,
   }) {
     final prefix = '*(ऑफलाइन एज एआय • $cacheAge चा डेटा)*\n\n';
+
+    if (intent == 'greeting') {
+      return '*(ऑफलाइन एज एआय • ऑन-डिव्हाइस Qwen2.5)*\n\n'
+          'नमस्कार! मी WeatherGPT आहे, जे आपल्या डिव्हाइसवर ऑफलाइन कार्यरत आहे. $loc मध्ये आता तापमान **$temp°C** आणि $cond आहे. मी आपली काय मदत करू शकतो?';
+    }
+
+    if (intent == 'gratitude') {
+      return '*(ऑफलाइन एज एआय)*\n\n'
+          'आपले सहर्ष स्वागत आहे! $loc मध्ये सुरक्षित रहा.';
+    }
 
     if (intent == 'rain_forecast') {
       final gear = (rain as num) > 40

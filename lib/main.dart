@@ -33,6 +33,7 @@ void main() async {
 
     await LocaleService.init();
     await WeatherApiClient.loadOfflinePreference();
+    await WeatherApiClient.loadProviderPreference();
     await OfflineEdgeAiService.instance.init();
   } catch (e) {
     debugPrint("Failed to load .env file or initialize services: $e");

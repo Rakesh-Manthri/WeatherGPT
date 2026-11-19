@@ -16,17 +16,28 @@ class OfflineWeatherCache {
   OfflineWeatherCache._();
 
   /// Persist the latest structured weather telemetry into local storage.
-  Future<void> saveTelemetry(Map<String, dynamic> weatherData) async {
+  /// If a provider is specified (or derived from weatherData), telemetry is also cached under the provider's key.
+  Future<void> saveTelemetry(Map<String, dynamic> weatherData, {String? provider}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final now = DateTime.now().toIso8601String();
       await prefs.setString(_cacheKey, json.encode(weatherData));
       await prefs.setString(_timestampKey, now);
 
+      final prov = provider ??
+          (weatherData['is_weathernext_primary'] == true ||
+                  (weatherData['data_source']?.toString().toLowerCase().contains('weathernext') ?? false)
+              ? 'weathernext'
+              : 'openmeteo');
+
+      await prefs.setString('${_cacheKey}_$prov', json.encode(weatherData));
+      await prefs.setString('${_timestampKey}_$prov', now);
+
       final lat = weatherData['latitude'] ?? weatherData['lat'];
       final lon = weatherData['longitude'] ?? weatherData['lon'];
       if (lat != null && lon != null) {
         await prefs.setString(_coordsKey, '$lat,$lon');
+        await prefs.setString('${_coordsKey}_$prov', '$lat,$lon');
       }
     } catch (e) {
       debugPrint('Error saving offline weather cache: $e');
@@ -34,10 +45,19 @@ class OfflineWeatherCache {
   }
 
   /// Retrieve the cached weather telemetry, or null if empty or obsolete fallback.
-  Future<Map<String, dynamic>?> getCachedTelemetry({bool purgeStaleFallback = true}) async {
+  /// If provider is specified, searches that provider's cache first before falling back to default.
+  Future<Map<String, dynamic>?> getCachedTelemetry({
+    String? provider,
+    bool purgeStaleFallback = true,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_cacheKey);
+      String? raw;
+      if (provider != null && provider.isNotEmpty) {
+        raw = prefs.getString('${_cacheKey}_$provider');
+      }
+      raw ??= prefs.getString(_cacheKey);
+
       if (raw == null || raw.trim().isEmpty) return null;
       final data = Map<String, dynamic>.from(json.decode(raw) as Map);
 
@@ -68,10 +88,14 @@ class OfflineWeatherCache {
   }
 
   /// Get the time when the cache was last updated.
-  Future<DateTime?> getCacheTimestamp() async {
+  Future<DateTime?> getCacheTimestamp({String? provider}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final tsStr = prefs.getString(_timestampKey);
+      String? tsStr;
+      if (provider != null && provider.isNotEmpty) {
+        tsStr = prefs.getString('${_timestampKey}_$provider');
+      }
+      tsStr ??= prefs.getString(_timestampKey);
       if (tsStr == null) return null;
       return DateTime.tryParse(tsStr);
     } catch (_) {
@@ -80,8 +104,8 @@ class OfflineWeatherCache {
   }
 
   /// Human-readable cache age (e.g. "12 mins ago", "3 hours ago").
-  Future<String> getCacheAgeString() async {
-    final ts = await getCacheTimestamp();
+  Future<String> getCacheAgeString({String? provider}) async {
+    final ts = await getCacheTimestamp(provider: provider);
     if (ts == null) return 'No cache available';
     final diff = DateTime.now().difference(ts);
     if (diff.inMinutes < 1) return 'Just now';
@@ -91,21 +115,36 @@ class OfflineWeatherCache {
   }
 
   /// Check whether cache is fresh (default 48 hours validity for offline survival).
-  Future<bool> hasValidCache({Duration maxAge = const Duration(hours: 48)}) async {
-    final ts = await getCacheTimestamp();
+  Future<bool> hasValidCache({
+    String? provider,
+    Duration maxAge = const Duration(hours: 48),
+  }) async {
+    final ts = await getCacheTimestamp(provider: provider);
     if (ts == null) return false;
-    final data = await getCachedTelemetry();
+    final data = await getCachedTelemetry(provider: provider);
     if (data == null || data.isEmpty) return false;
     return DateTime.now().difference(ts) <= maxAge;
   }
 
   /// Clear the cached telemetry.
-  Future<void> clear() async {
+  Future<void> clear({String? provider}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_cacheKey);
-      await prefs.remove(_timestampKey);
-      await prefs.remove(_coordsKey);
+      if (provider != null && provider.isNotEmpty) {
+        await prefs.remove('${_cacheKey}_$provider');
+        await prefs.remove('${_timestampKey}_$provider');
+        await prefs.remove('${_coordsKey}_$provider');
+      } else {
+        await prefs.remove(_cacheKey);
+        await prefs.remove(_timestampKey);
+        await prefs.remove(_coordsKey);
+        await prefs.remove('${_cacheKey}_weathernext');
+        await prefs.remove('${_timestampKey}_weathernext');
+        await prefs.remove('${_coordsKey}_weathernext');
+        await prefs.remove('${_cacheKey}_openmeteo');
+        await prefs.remove('${_timestampKey}_openmeteo');
+        await prefs.remove('${_coordsKey}_openmeteo');
+      }
     } catch (_) {}
   }
 

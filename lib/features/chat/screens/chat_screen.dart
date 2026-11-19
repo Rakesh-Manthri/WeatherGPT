@@ -171,10 +171,18 @@ class _ChatScreenState extends State<ChatScreen> {
     if (widget.isIncognito) return;
     if (_currentSessionId == null) return;
 
-    List<ChatMessage> loaded = [];
-    bool loadedFromSupabase = false;
+    // 1. Instantly display local cache if available (zero network delay)
+    final localMsgs = LocalChatStore.getCachedMessages(_currentSessionId!);
+    if (localMsgs.isNotEmpty && mounted) {
+      setState(() {
+        _messages.clear();
+        _messages.addAll(localMsgs);
+        _isOfflineCache = true;
+      });
+      _scrollToBottom();
+    }
 
-    // 1. Attempt loading from Supabase first
+    // 2. Fetch fresh updates from Supabase in background
     try {
       final user = _getSupabaseUser();
       if (user != null) {
@@ -185,34 +193,26 @@ class _ChatScreenState extends State<ChatScreen> {
             .order('created_at', ascending: true);
 
         if (response.isNotEmpty) {
-          loaded = response
+          final loaded = response
               .whereType<Map>()
               .map((item) => ChatMessage.fromMap(Map<String, dynamic>.from(item)))
               .toList();
-          loadedFromSupabase = true;
+
           // Synchronize fresh messages into Hive
           await LocalChatStore.saveMessages(_currentSessionId!, loaded);
+
+          if (mounted) {
+            setState(() {
+              _messages.clear();
+              _messages.addAll(loaded);
+              _isOfflineCache = false;
+            });
+            _scrollToBottom();
+          }
         }
       }
     } catch (e) {
-      debugPrint('Error loading chat messages from Supabase: $e');
-    }
-
-    // 2. Fallback to Local Hive Cache if Supabase unavailable or returned empty
-    if (!loadedFromSupabase || loaded.isEmpty) {
-      final localMsgs = LocalChatStore.getCachedMessages(_currentSessionId!);
-      if (localMsgs.isNotEmpty) {
-        loaded = localMsgs;
-        _isOfflineCache = true;
-      }
-    }
-
-    if (mounted && loaded.isNotEmpty) {
-      setState(() {
-        _messages.clear();
-        _messages.addAll(loaded);
-      });
-      _scrollToBottom();
+      debugPrint('Error syncing chat messages from Supabase: $e');
     }
   }
 

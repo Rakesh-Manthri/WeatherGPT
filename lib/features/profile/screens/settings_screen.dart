@@ -19,6 +19,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isEditing = false;
   bool _isSaving = false;
   bool _offlineMode = WeatherApiClient.forceOfflineMode;
+  String _selectedProvider = WeatherApiClient.primaryProvider;
   bool _isSyncingCache = false;
   String _cacheSummary = 'Loading cache...';
   DeviceCapabilityResult? _capabilityResult;
@@ -34,14 +35,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadOfflineEdgeState() async {
     await WeatherApiClient.loadOfflinePreference();
+    await WeatherApiClient.loadProviderPreference();
     await OfflineEdgeAiService.instance.init();
     final cap = await DeviceCapabilityChecker.check();
-    final cacheAge = await OfflineWeatherCache.instance.getCacheAgeString();
-    final data = await OfflineWeatherCache.instance.getCachedTelemetry();
+    final cacheAge = await OfflineWeatherCache.instance.getCacheAgeString(provider: _selectedProvider);
+    final data = await OfflineWeatherCache.instance.getCachedTelemetry(provider: _selectedProvider);
     if (mounted) {
       setState(() {
         _capabilityResult = cap;
         _offlineMode = WeatherApiClient.forceOfflineMode;
+        _selectedProvider = WeatherApiClient.primaryProvider;
         if (data != null) {
           final loc = data['location_name'] ?? 'Local Area';
           final temp = data['temperature'] ?? '--';
@@ -52,6 +55,244 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
       });
     }
+  }
+
+  void _showProviderSelectionSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Primary Weather Provider',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1C1C1E),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Choose which meteorological engine generates forecasts and caches local telemetry.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    // Option 1: WeatherNext 3
+                    InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        Navigator.pop(ctx);
+                        await WeatherApiClient.setPrimaryProvider('weathernext');
+                        if (!mounted) return;
+                        setState(() => _selectedProvider = 'weathernext');
+                        _loadOfflineEdgeState();
+                        messenger.showSnackBar(
+                          const SnackBar(
+                            content: Text('Primary provider set to WeatherNext 3 (Google DeepMind)'),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: _selectedProvider == 'weathernext'
+                              ? const Color(0xFFE8F0FE)
+                              : const Color(0xFFF8F9FA),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: _selectedProvider == 'weathernext'
+                                ? const Color(0xFF1A73E8)
+                                : const Color(0xFFE0E0E0),
+                            width: _selectedProvider == 'weathernext' ? 1.5 : 1.0,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: _selectedProvider == 'weathernext'
+                                    ? const Color(0xFF1A73E8)
+                                    : Colors.grey.shade200,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.auto_awesome,
+                                size: 20,
+                                color: _selectedProvider == 'weathernext'
+                                    ? Colors.white
+                                    : Colors.grey.shade700,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Flexible(
+                                        child: Text(
+                                          'WeatherNext 3 (DeepMind)',
+                                          style: TextStyle(
+                                            fontSize: 14.5,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF1C1C1E),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF1A73E8),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: const Text(
+                                          'Recommended',
+                                          style: TextStyle(
+                                            fontSize: 9.5,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '64-member physical ensemble • 0.1° (~10km) global NWP • Probabilistic spread & fallback',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      color: Colors.grey.shade600,
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (_selectedProvider == 'weathernext')
+                              const Icon(Icons.check_circle_rounded, color: Color(0xFF1A73E8), size: 22),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Option 2: Open-Meteo
+                    InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        Navigator.pop(ctx);
+                        await WeatherApiClient.setPrimaryProvider('openmeteo');
+                        if (!mounted) return;
+                        setState(() => _selectedProvider = 'openmeteo');
+                        _loadOfflineEdgeState();
+                        messenger.showSnackBar(
+                          const SnackBar(
+                            content: Text('Primary provider set to Open-Meteo (Global NWP)'),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: _selectedProvider == 'openmeteo'
+                              ? const Color(0xFFE8F5E9)
+                              : const Color(0xFFF8F9FA),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: _selectedProvider == 'openmeteo'
+                                ? const Color(0xFF2E7D32)
+                                : const Color(0xFFE0E0E0),
+                            width: _selectedProvider == 'openmeteo' ? 1.5 : 1.0,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: _selectedProvider == 'openmeteo'
+                                    ? const Color(0xFF2E7D32)
+                                    : Colors.grey.shade200,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.public,
+                                size: 20,
+                                color: _selectedProvider == 'openmeteo'
+                                    ? Colors.white
+                                    : Colors.grey.shade700,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Open-Meteo (Global NWP)',
+                                    style: TextStyle(
+                                      fontSize: 14.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1C1C1E),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Global multi-model NWP (ECMWF, GFS, DWD) • Deterministic ground telemetry',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      color: Colors.grey.shade600,
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (_selectedProvider == 'openmeteo')
+                              const Icon(Icons.check_circle_rounded, color: Color(0xFF2E7D32), size: 22),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _handleDeleteModel() async {
@@ -462,69 +703,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
 
-                // Weather Provider Priority Tile
+                // Weather Provider Priority Selection Tile
                 _SettingsTile(
-                  icon: Icons.auto_awesome,
-                  iconColor: const Color(0xFF1A73E8),
-                  iconBgColor: const Color(0xFFE8F0FE),
-                  title: 'WeatherNext 3 (Google DeepMind)',
-                  subtitle: 'Primary NWP: 64-member ensemble • Fallback: Open-Meteo',
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE8F0FE),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Text(
-                      'Primary NWP',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1A73E8),
-                      ),
-                    ),
-                  ),
-                  onTap: () {
-                    showDialog(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        backgroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                        title: const Row(
-                          children: [
-                            Icon(Icons.auto_awesome, color: Color(0xFF1A73E8)),
-                            SizedBox(width: 8),
-                            Text('Weather Providers'),
-                          ],
+                  icon: _selectedProvider == 'weathernext' ? Icons.auto_awesome : Icons.public,
+                  iconColor: _selectedProvider == 'weathernext' ? const Color(0xFF1A73E8) : const Color(0xFF2E7D32),
+                  iconBgColor: _selectedProvider == 'weathernext' ? const Color(0xFFE8F0FE) : const Color(0xFFE8F5E9),
+                  title: _selectedProvider == 'weathernext'
+                      ? 'WeatherNext 3 (Google DeepMind)'
+                      : 'Open-Meteo (Global NWP)',
+                  subtitle: _selectedProvider == 'weathernext'
+                      ? 'Primary NWP: 64-member ensemble • 0.1° resolution'
+                      : 'Primary NWP: Global multi-model NWP telemetry',
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _selectedProvider == 'weathernext'
+                              ? const Color(0xFFE8F0FE)
+                              : const Color(0xFFE8F5E9),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        content: const Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'WeatherGPT operates a multi-tiered provider architecture:\n\n'
-                              '1. ⚡ WeatherNext 3 (Google DeepMind)\n'
-                              '   • Primary 0.1° global probabilistic model.\n'
-                              '   • 64 ensemble members with uncertainty spread.\n\n'
-                              '2. 🌐 Open-Meteo (Secondary Fallback)\n'
-                              '   • Automatic fallback if WeatherNext 3 GCS is in standby.\n\n'
-                              '3. ☀️ Climatological Solar Model (Tertiary)\n'
-                              '   • Diurnal solar/latitude physics if networks fail.\n\n'
-                              '4. 📱 Offline Edge AI (Zero Connectivity)\n'
-                              '   • On-device Qwen2.5-0.5B-Instruct SLM.',
-                              style: TextStyle(fontSize: 13, height: 1.45, color: Color(0xFF333333)),
-                            ),
-                          ],
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx),
-                            child: const Text('Close'),
+                        child: Text(
+                          _selectedProvider == 'weathernext' ? 'DeepMind' : 'Open-Meteo',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: _selectedProvider == 'weathernext'
+                                ? const Color(0xFF1A73E8)
+                                : const Color(0xFF2E7D32),
                           ),
-                        ],
+                        ),
                       ),
-                    );
-                  },
+                      const SizedBox(width: 4),
+                      Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey.shade400),
+                    ],
+                  ),
+                  onTap: _showProviderSelectionSheet,
                 ),
 
                 const SizedBox(height: 24),

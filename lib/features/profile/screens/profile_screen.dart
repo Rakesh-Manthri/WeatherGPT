@@ -29,6 +29,16 @@ class ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _fetchHistory() async {
+    // 1. Immediately display local Hive cache if available
+    final cached = LocalChatStore.getCachedSessions();
+    if (cached.isNotEmpty && mounted) {
+      setState(() {
+        _chatSessions = cached;
+        _loading = false;
+      });
+    }
+
+    // 2. Fetch fresh updates from Supabase in the background
     try {
       final response = await Supabase.instance.client
           .from('chat_sessions')
@@ -40,18 +50,20 @@ class ProfileScreenState extends State<ProfileScreen> {
       if (mounted) {
         setState(() {
           _chatSessions = response;
+          _loading = false;
         });
         // Cache sessions and messages locally in Hive
         LocalChatStore.saveSessionsList(response);
       }
     } catch (e) {
       debugPrint('Error fetching chat sessions from Supabase: $e');
-      // Offline fallback: load from LocalChatStore
-      final cached = LocalChatStore.getCachedSessions();
-      if (mounted && cached.isNotEmpty) {
-        setState(() {
-          _chatSessions = cached;
-        });
+      if (mounted && _chatSessions.isEmpty) {
+        final fallbackCached = LocalChatStore.getCachedSessions();
+        if (fallbackCached.isNotEmpty) {
+          setState(() {
+            _chatSessions = fallbackCached;
+          });
+        }
       }
     } finally {
       if (mounted) {

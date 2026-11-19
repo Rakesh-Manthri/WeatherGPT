@@ -1,7 +1,7 @@
 import httpx
 import logging
 import math
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 from datetime import datetime, timezone, timedelta
 from .earth_engine_service import earth_engine_service
 from .weathernext_service import weathernext_service
@@ -124,10 +124,17 @@ class WeatherService:
             return "Thunderstorm"
         return "Partly Cloudy"
 
-    def get_structured_weather_data(self, lat: float, lon: float, location_name: str = "") -> Dict[str, Any]:
+    def get_structured_weather_data(
+        self,
+        lat: float,
+        lon: float,
+        location_name: str = "",
+        provider: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
-        Fetch comprehensive telemetry and forecast data with WeatherNext 3 as PRIMARY engine,
-        falling back to Open-Meteo, and then to a dynamic climatological solar model.
+        Fetch comprehensive telemetry and forecast data according to provider preference:
+        - If provider == 'openmeteo', Open-Meteo is served as PRIMARY.
+        - Otherwise (default or provider == 'weathernext'), WeatherNext 3 is PRIMARY with Open-Meteo fallback.
         """
         # 1. Resolve human-readable location name if absent
         resolved_name = location_name
@@ -135,18 +142,20 @@ class WeatherService:
             resolved_name = self._reverse_geocode_city(lat, lon) or "Your Location"
 
         payload: Optional[Dict[str, Any]] = None
+        prefer_openmeteo = bool(provider and provider.strip().lower() == "openmeteo")
 
-        # 2. PRIMARY: Attempt WeatherNext 3 Operational Ensemble (Google DeepMind, 0.1° resolution)
-        try:
-            payload = weathernext_service.get_primary_weather_payload(lat, lon, location_name=resolved_name)
-            if payload:
-                logger.info(f"WeatherNext 3: successfully served as PRIMARY weather provider for ({lat}, {lon})")
-        except Exception as wn_err:
-            logger.debug(f"WeatherNext 3 primary fetch skipped: {wn_err}")
+        # 2. PRIMARY (WeatherNext 3) unless user explicitly prefers Open-Meteo
+        if not prefer_openmeteo:
+            try:
+                payload = weathernext_service.get_primary_weather_payload(lat, lon, location_name=resolved_name)
+                if payload:
+                    logger.info(f"WeatherNext 3: successfully served as PRIMARY weather provider for ({lat}, {lon})")
+            except Exception as wn_err:
+                logger.debug(f"WeatherNext 3 primary fetch skipped: {wn_err}")
 
-        # 3. SECONDARY FALLBACK: If WeatherNext 3 is not live (e.g. GCS standby / 403 / timeout), use Open-Meteo
+        # 3. SECONDARY or USER-PREFERRED: Open-Meteo
         if not payload:
-            logger.info(f"Using Open-Meteo as SECONDARY fallback provider for ({lat}, {lon})")
+            logger.info(f"Using Open-Meteo as {'USER-SELECTED PRIMARY' if prefer_openmeteo else 'SECONDARY fallback'} provider for ({lat}, {lon})")
             params = {
                 "latitude": lat,
                 "longitude": lon,

@@ -220,6 +220,76 @@ void main() {
       // Clean up
       await WeatherApiClient.setForceOfflineMode(false);
     });
+
+    test('persists and retrieves provider preference correctly', () async {
+      await WeatherApiClient.setPrimaryProvider('openmeteo');
+      expect(WeatherApiClient.primaryProvider, 'openmeteo');
+
+      await WeatherApiClient.loadProviderPreference();
+      expect(WeatherApiClient.primaryProvider, 'openmeteo');
+
+      // Switch back to weathernext
+      await WeatherApiClient.setPrimaryProvider('weathernext');
+      expect(WeatherApiClient.primaryProvider, 'weathernext');
+    });
+
+    test('caches and isolates telemetry based on provider preference', () async {
+      final cache = OfflineWeatherCache.instance;
+      await cache.saveTelemetry({
+        'location_name': 'Hyderabad WN',
+        'temperature': 24.5,
+        'condition': 'Clear',
+      }, provider: 'weathernext');
+
+      await cache.saveTelemetry({
+        'location_name': 'Hyderabad OM',
+        'temperature': 26.0,
+        'condition': 'Cloudy',
+      }, provider: 'openmeteo');
+
+      final wnData = await cache.getCachedTelemetry(provider: 'weathernext');
+      final omData = await cache.getCachedTelemetry(provider: 'openmeteo');
+
+      expect(wnData?['location_name'], 'Hyderabad WN');
+      expect(wnData?['temperature'], 24.5);
+
+      expect(omData?['location_name'], 'Hyderabad OM');
+      expect(omData?['temperature'], 26.0);
+    });
+
+    test('suppresses weather card data for small queries and greetings in offline mode', () async {
+      final edge = OfflineEdgeAiService.instance;
+      await OfflineWeatherCache.instance.saveTelemetry({
+        'location_name': 'Bengaluru',
+        'temperature': 22.0,
+        'condition': 'Pleasant',
+      });
+
+      // 1. Greeting query -> tailored conversational greeting, weatherData is null
+      final greetingRes = await edge.processOfflineQuery('Hello, how are you?');
+      expect(greetingRes.text.contains('Hello! I am WeatherGPT'), isTrue);
+      expect(greetingRes.weatherData, isNull);
+      expect(greetingRes.isGroundedOnCache, isFalse);
+
+      // 2. Gratitude query -> polite acknowledgement, weatherData is null
+      final thanksRes = await edge.processOfflineQuery('Thanks for your help!');
+      expect(thanksRes.text.contains('welcome'), isTrue);
+      expect(thanksRes.weatherData, isNull);
+
+      // 3. Meteorological query -> weatherData is attached for card rendering
+      final weatherRes = await edge.processOfflineQuery('What is the weather in Bengaluru?');
+      expect(weatherRes.weatherData, isNotNull);
+      expect(weatherRes.weatherData?['temperature'], 22.0);
+      expect(weatherRes.isGroundedOnCache, isTrue);
+
+      // 4. Wind query -> targeted wind focus
+      final windRes = await edge.processOfflineQuery('Is it windy?');
+      expect(windRes.text.contains('Wind Conditions'), isTrue);
+
+      // 5. Temperature query -> targeted temperature focus
+      final tempRes = await edge.processOfflineQuery('What is the temperature?');
+      expect(tempRes.text.contains('Temperature in Bengaluru'), isTrue);
+    });
   });
 
   group('DeviceCapabilityChecker Hardware Tests', () {

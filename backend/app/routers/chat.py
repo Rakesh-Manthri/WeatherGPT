@@ -19,6 +19,7 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     language: str | None = None
     voice_mode: bool = False
+    provider: str | None = None
 
 class ChatResponse(BaseModel):
     reply: str
@@ -28,6 +29,50 @@ class ChatResponse(BaseModel):
     detected_language: Optional[str] = None
     tts_locale: Optional[str] = None
     stt_locale: Optional[str] = None
+
+def is_weather_query(message: str) -> bool:
+    """
+    Determines whether a message is seeking meteorological, agricultural,
+    panchangam, or outdoor forecast information, as opposed to small talk,
+    greetings, or conversational acknowledgments.
+    """
+    msg = message.strip().lower()
+    greetings = {
+        "hi", "hello", "hey", "hola", "namaste", "vanakkam", "namaskaram",
+        "good morning", "good afternoon", "good evening", "good night",
+        "how are you", "how are you?", "who are you", "who are you?",
+        "what can you do", "what can you do?", "help", "thanks", "thank you",
+        "ok", "okay", "cool", "bye", "goodbye", "test", "testing"
+    }
+    cleaned = re.sub(r"[^\w\s]", "", msg)
+    if cleaned in greetings:
+        return False
+
+    weather_keywords = [
+        "weather", "forecast", "temp", "temperature", "rain", "rainy", "raining",
+        "precipitation", "umbrella", "shower", "downpour", "storm", "cyclone",
+        "thunder", "lightning", "wind", "windy", "breeze", "gale", "humidity",
+        "humid", "hot", "heat", "cold", "chill", "chilly", "sunny", "sun", "cloud",
+        "cloudy", "overcast", "fog", "foggy", "mist", "smog", "aqi", "air quality",
+        "pollution", "pressure", "uv", "radar", "satellite", "monsoon",
+        "climate", "drizzle", "hail", "snow", "degrees", "celsius",
+        "मौसम", "तापमान", "बारिश", "वर्षा", "हवा", "आंधी", "तूफान", "बादल",
+        "వాతావరణం", "వర్షం", "ఎండ", "గాలి", "చలి", "ఉష్ణోగ్రత", "తుఫాను",
+        "வானிலை", "மழை", "வெயில்", "காற்று",
+        "हवामान", "पाऊस", "ऊन", "वारा",
+        "panchang", "tithi", "nakshatra", "muhurth", "sow", "crop", "farm", "farming",
+        "outdoor", "wear", "jacket", "attire"
+    ]
+
+    for kw in weather_keywords:
+        if kw in msg:
+            return True
+
+    words = msg.split()
+    if len(words) <= 3 and not any(kw in msg for kw in weather_keywords):
+        return False
+
+    return False
 
 @router.get("/languages")
 async def get_supported_voice_languages():
@@ -64,7 +109,7 @@ async def chat_completions(req: ChatRequest):
     lon = req.lon
     if lat is not None and lon is not None:
         try:
-            structured_weather = weather_service.get_structured_weather_data(lat, lon)
+            structured_weather = weather_service.get_structured_weather_data(lat, lon, provider=req.provider)
             context_prefix += (
                 f"[Live Meteorological Telemetry at ({lat}, {lon}): "
                 f"Temp={structured_weather['temperature']}°C, Condition={structured_weather['condition']}, "
@@ -91,7 +136,8 @@ async def chat_completions(req: ChatRequest):
             print(f"Error fetching telemetry: {e}")
 
     # Hybrid RAG: Attach Panchangam + Weather fusion when cultural/agro/muhurtham intent is detected
-    if is_panchangam_query(req.message):
+    is_panchangam = is_panchangam_query(req.message)
+    if is_panchangam:
         try:
             p_lat = lat if lat is not None else 28.6139
             p_lon = lon if lon is not None else 77.2090
@@ -127,13 +173,15 @@ async def chat_completions(req: ChatRequest):
         except Exception as e:
             print(f"Error computing Panchangam fusion: {e}")
 
+    has_weather_intent = bool(structured_weather) and (is_weather_query(req.message) or is_panchangam)
+
     if not ai_service.ai_agent:
         # Fallback if Gemini key is missing
         fallback_reply = "AI agent is not initialized. Please check GEMINI_API_KEY."
         return ChatResponse(
             reply=fallback_reply,
-            weather_context_used=bool(structured_weather),
-            weather_data=structured_weather,
+            weather_context_used=has_weather_intent,
+            weather_data=structured_weather if has_weather_intent else None,
             tts_text=indic_voice_service.sanitize_for_tts(fallback_reply, lang_spec),
             detected_language=lang_spec.english_name,
             tts_locale=lang_spec.tts_locale,
@@ -149,8 +197,8 @@ async def chat_completions(req: ChatRequest):
 
     return ChatResponse(
         reply=reply,
-        weather_context_used=bool(structured_weather),
-        weather_data=structured_weather,
+        weather_context_used=has_weather_intent,
+        weather_data=structured_weather if has_weather_intent else None,
         tts_text=tts_text,
         detected_language=lang_spec.english_name,
         tts_locale=lang_spec.tts_locale,
