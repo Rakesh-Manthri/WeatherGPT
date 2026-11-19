@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'weather_map_bubble.dart';
+import '../../weather/screens/live_weather_screen.dart';
 
 class WeatherCardBubble extends StatefulWidget {
   final Map<String, dynamic> weatherData;
@@ -117,9 +118,24 @@ class _WeatherCardBubbleState extends State<WeatherCardBubble> {
           // Header: Location & Live Tag
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
+            child: InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => LiveWeatherScreen(
+                      initialLat: lat,
+                      initialLon: lon,
+                      initialLocationName: locationName,
+                      initialWeatherData: widget.weatherData,
+                    ),
+                  ),
+                );
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
                 Expanded(
                   child: Row(
                     children: [
@@ -190,6 +206,7 @@ class _WeatherCardBubbleState extends State<WeatherCardBubble> {
               ],
             ),
           ),
+        ),
 
           const Divider(height: 1, color: Color(0xFFF2F2F2)),
 
@@ -446,6 +463,33 @@ class _WeatherCardBubbleState extends State<WeatherCardBubble> {
                         ),
                       ),
                     ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.dashboard_customize_outlined, size: 19, color: Color(0xFF1C1C1E)),
+                    tooltip: 'Open Live Dashboard',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => LiveWeatherScreen(
+                            initialLat: lat,
+                            initialLon: lon,
+                            initialLocationName: locationName,
+                            initialWeatherData: widget.weatherData,
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
                 if (widget.onViewMap != null) ...[

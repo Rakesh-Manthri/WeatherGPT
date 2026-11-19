@@ -9,6 +9,7 @@ import 'features/profile/screens/profile_screen.dart';
 import 'features/news/screens/news_screen.dart';
 import 'features/voice/screens/voice_assistant_screen.dart';
 import 'features/map/screens/map_screen.dart';
+import 'features/weather/screens/live_weather_screen.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'core/localization/locale_service.dart';
 import 'core/api/weather_api_client.dart';
@@ -192,10 +193,27 @@ class _WeatherGptScreenState extends State<WeatherGptScreen> {
                     },
                   ),
 
-                  // News Button (slides from right to left)
-                  _CircularIconButton(
-                    icon: Icons.article_outlined,
-                    onPressed: () => _goToPage(2),
+                  // Actions: Live Weather & News
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _CircularIconButton(
+                        icon: Icons.wb_sunny_outlined,
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const LiveWeatherScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      _CircularIconButton(
+                        icon: Icons.article_outlined,
+                        onPressed: () => _goToPage(2),
+                      ),
+                    ],
                   ),
                 ],
               ),
