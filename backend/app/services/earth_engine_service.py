@@ -38,13 +38,23 @@ class EarthEngineService:
                 logger.warning(f"Google Service Account file not found at: {key_path}")
                 return
 
-            creds = service_account.Credentials.from_service_account_file(
-                key_path,
-                scopes=[
-                    "https://www.googleapis.com/auth/earthengine",
-                    "https://www.googleapis.com/auth/cloud-platform"
-                ]
-            )
+            scopes = [
+                "https://www.googleapis.com/auth/earthengine",
+                "https://www.googleapis.com/auth/cloud-platform"
+            ]
+
+            import json
+            with open(key_path, "r", encoding="utf-8") as f:
+                key_info = json.load(f)
+
+            if key_info.get("type") == "authorized_user":
+                from google.oauth2.credentials import Credentials as UserCredentials
+                creds = UserCredentials.from_authorized_user_file(key_path)
+            else:
+                creds = service_account.Credentials.from_service_account_file(
+                    key_path,
+                    scopes=scopes,
+                )
 
             project_id = settings.GOOGLE_CLOUD_PROJECT or "weathergpt-509714"
             ee.Initialize(credentials=creds, project=project_id)

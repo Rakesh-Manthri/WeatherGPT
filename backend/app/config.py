@@ -1,4 +1,8 @@
+import os
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_backend_env = Path(__file__).resolve().parent.parent / ".env"
 
 class Settings(BaseSettings):
     SUPABASE_URL: str = ""
@@ -14,7 +18,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "*"
 
     model_config = SettingsConfigDict(
-        env_file=(".env", "../.env"), 
+        env_file=(str(_backend_env), ".env", "backend/.env", "../.env"), 
         env_file_encoding="utf-8", 
         extra="ignore"
     )
