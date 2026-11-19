@@ -1,5 +1,5 @@
 """
-WeatherGPT — Phase 5.2 Real-Time Weather News Engine Unit Tests
+WeatherGPT — Phase 5.2 / F9-11 Real-Time Weather News Engine Unit Tests
 """
 
 import unittest
@@ -11,9 +11,10 @@ from backend.app.services.news_service import weather_news_service, WeatherNewsS
 class TestWeatherNewsEngine(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
+        weather_news_service.clear_cache()
 
     def test_news_retrieval_and_semantic_deduplication(self):
-        items = weather_news_service.get_weather_news(limit=10)
+        items = weather_news_service.get_weather_news(limit=20)
         self.assertGreater(len(items), 0)
 
         # Check deduplication: raw stream has a duplicate cyclone item
@@ -38,6 +39,25 @@ class TestWeatherNewsEngine(unittest.TestCase):
         for item in alert_items:
             self.assertEqual(item["category"], "ALERTS")
 
+    def test_source_type_filtering(self):
+        # Government sources only
+        govt_items = weather_news_service.get_weather_news(source_type="GOVERNMENT")
+        self.assertGreater(len(govt_items), 0)
+        for item in govt_items:
+            self.assertEqual(item["source_type"], "GOVERNMENT")
+
+        # Global media sources only
+        global_items = weather_news_service.get_weather_news(source_type="GLOBAL")
+        self.assertGreater(len(global_items), 0)
+        for item in global_items:
+            self.assertEqual(item["source_type"], "GLOBAL")
+
+        # Science sources only
+        science_items = weather_news_service.get_weather_news(source_type="SCIENCE")
+        self.assertGreater(len(science_items), 0)
+        for item in science_items:
+            self.assertEqual(item["source_type"], "SCIENCE")
+
     def test_jaccard_similarity_calculation(self):
         t1 = "IMD Issues Cyclone Alert for Coastal Andhra"
         t2 = "Depression in Bay: Cyclone Alert for Coastal Andhra Coast"
@@ -58,6 +78,16 @@ class TestWeatherNewsEngine(unittest.TestCase):
         self.assertIn("title", first)
         self.assertIn("source", first)
         self.assertIn("citations", first)
+        self.assertIn("source_type", first)
+
+    def test_news_api_endpoint_with_source_filter(self):
+        res = self.client.get("/api/news/weather?source=GLOBAL&limit=10")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["source"], "GLOBAL")
+        self.assertGreater(data["total"], 0)
+        for art in data["articles"]:
+            self.assertEqual(art["source_type"], "GLOBAL")
 
     def test_news_categories_endpoint(self):
         res = self.client.get("/api/news/categories")
@@ -68,6 +98,25 @@ class TestWeatherNewsEngine(unittest.TestCase):
         self.assertIn("ALL", cat_ids)
         self.assertIn("AGRICULTURE", cat_ids)
         self.assertIn("CYCLONE", cat_ids)
+
+    def test_news_sources_endpoint(self):
+        res = self.client.get("/api/news/sources")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertIn("sources", data)
+        self.assertGreater(data["total"], 0)
+        source_types = {s["type"] for s in data["sources"]}
+        self.assertIn("GOVERNMENT", source_types)
+        self.assertIn("GLOBAL", source_types)
+        self.assertIn("SCIENCE", source_types)
+
+    def test_news_caching_layer(self):
+        # First call populates cache
+        res1 = weather_news_service.get_weather_news(category="ALL", limit=5)
+        # Second call returns cached list
+        res2 = weather_news_service.get_weather_news(category="ALL", limit=5)
+        self.assertEqual(len(res1), len(res2))
+        self.assertEqual([a["id"] for a in res1], [a["id"] for a in res2])
 
 
 if __name__ == "__main__":

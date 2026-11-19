@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     PORT: int = 8000
     ENVIRONMENT: str = "production"
     CORS_ORIGINS: str = "*"
+    NEWS_API_KEY: str = ""
+    GNEWS_API_KEY: str = ""
 
     model_config = SettingsConfigDict(
         env_file=(str(_backend_env), ".env", "backend/.env", "../.env"), 

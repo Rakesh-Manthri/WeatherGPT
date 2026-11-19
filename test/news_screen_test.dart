@@ -28,6 +28,12 @@ void main() {
     // Verify header pill
     expect(find.text('Weather & Agro Bulletins'), findsOneWidget);
 
+    // Verify multi-source chips
+    expect(find.text('All Sources'), findsOneWidget);
+    expect(find.text('Govt (IMD/NDMA)'), findsOneWidget);
+    expect(find.text('Global (BBC/Reuters)'), findsOneWidget);
+    expect(find.text('Science (ISRO/ICAR)'), findsOneWidget);
+
     // Verify category chips
     expect(find.text('All Updates'), findsOneWidget);
     expect(find.text('Disaster Alerts'), findsOneWidget);
@@ -62,5 +68,28 @@ void main() {
 
     // Verify filtered alert card
     expect(find.textContaining('Disaster Response Teams'), findsOneWidget);
+  });
+
+  testWidgets('NewsScreen filters articles when multi-source chip is selected', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: NewsScreen(),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Tap on 'Global (BBC/Reuters)' source chip
+    final globalSourceChip = find.text('Global (BBC/Reuters)');
+    expect(globalSourceChip, findsOneWidget);
+
+    await tester.tap(globalSourceChip);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Verify global wire article is displayed
+    expect(find.textContaining('BBC Climate Watch'), findsOneWidget);
+    expect(find.text('🌍 Global'), findsOneWidget);
   });
 }

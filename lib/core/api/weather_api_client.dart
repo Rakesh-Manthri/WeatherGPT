@@ -255,20 +255,26 @@ class WeatherApiClient {
   /// Fetches real-time AI curated weather news with citations and semantic deduplication
   Future<List<Map<String, dynamic>>> getWeatherNews({
     String? category,
-    int limit = 10,
+    String? source,
+    int limit = 15,
   }) async {
     final cat = category ?? 'ALL';
+    final src = source ?? 'ALL';
 
     if (forceOfflineMode) {
-      return _getFallbackNews(category: cat);
+      return _getFallbackNews(category: cat, source: src);
     }
 
     for (final baseUrl in _candidateUrls) {
       try {
         final dio = _createDio(baseUrl, timeoutSeconds: 3);
+        final queryParams = <String, dynamic>{'category': cat, 'limit': limit};
+        if (src != 'ALL') {
+          queryParams['source'] = src;
+        }
         final res = await dio.get(
           '/news/weather',
-          queryParameters: {'category': cat, 'limit': limit},
+          queryParameters: queryParams,
         );
         if (res.statusCode == 200 && res.data != null) {
           final articles = res.data['articles'] as List?;
@@ -282,7 +288,7 @@ class WeatherApiClient {
     }
 
     // Offline / Network Fallback News
-    return _getFallbackNews(category: cat);
+    return _getFallbackNews(category: cat, source: src);
   }
 
   /// Fetches verified disaster alerts signed cryptographically by WeatherGPT Authority
@@ -315,7 +321,7 @@ class WeatherApiClient {
     return [];
   }
 
-  List<Map<String, dynamic>> _getFallbackNews({String? category}) {
+  List<Map<String, dynamic>> _getFallbackNews({String? category, String? source}) {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final allFallback = [
       {
@@ -328,6 +334,7 @@ class WeatherApiClient {
         'category': 'CYCLONE',
         'severity': 'CRITICAL',
         'region': 'Coastal Andhra & Odisha',
+        'source_type': 'GOVERNMENT',
         'published_at': now - 7200,
         'verified': true,
         'citations': ['IMD National Bulletin', 'RSMC Tropical Cyclones New Delhi'],
@@ -342,6 +349,7 @@ class WeatherApiClient {
         'category': 'AGRICULTURE',
         'severity': 'INFO',
         'region': 'Deccan Plateau',
+        'source_type': 'SCIENCE',
         'published_at': now - 14400,
         'verified': true,
         'citations': ['ICAR Agromet Advisory Bulletin', 'District Agromet Unit'],
@@ -356,17 +364,50 @@ class WeatherApiClient {
         'category': 'ALERTS',
         'severity': 'WARNING',
         'region': 'Krishna & Godavari Basins',
+        'source_type': 'GOVERNMENT',
         'published_at': now - 21600,
         'verified': true,
         'citations': ['NDMA Operations Division'],
       },
+      {
+        'id': 'NEWS-OFFLINE-004',
+        'title': 'BBC Climate Watch: Global Atmospheric Rivers Trigger Seasonal Anomalies',
+        'summary':
+            'Meteorologists track persistent atmospheric moisture corridors spanning the Indian Ocean and South Asian basin.',
+        'source': 'BBC Weather & Climate',
+        'source_url': 'https://bbc.com/weather',
+        'category': 'CLIMATE',
+        'severity': 'INFO',
+        'region': 'Global / South Asia',
+        'source_type': 'GLOBAL',
+        'published_at': now - 18000,
+        'verified': true,
+        'citations': ['BBC World Weather Centre', 'WMO Climate Desk'],
+      },
+      {
+        'id': 'NEWS-OFFLINE-005',
+        'title': 'Urban Heat Island Anomaly Monitored: Hyderabad Ridge Records 3.4°C Gradient',
+        'summary':
+            'Satellite thermal infrared observations confirm significant daytime surface temperature divergence between dense built-up corridors and lake greenbelts.',
+        'source': 'National Remote Sensing Centre (NRSC / ISRO)',
+        'source_url': 'https://nrsc.gov.in',
+        'category': 'CLIMATE',
+        'severity': 'INFO',
+        'region': 'Hyderabad Metropolitan Area',
+        'source_type': 'SCIENCE',
+        'published_at': now - 28800,
+        'verified': true,
+        'citations': ['ISRO Landsat-9 TIRS Reanalysis', 'Bhuvan Geoportal'],
+      },
     ];
 
-    if (category == null || category.toUpperCase() == 'ALL') {
-      return allFallback;
+    var filtered = allFallback;
+    if (category != null && category.toUpperCase() != 'ALL') {
+      filtered = filtered.where((n) => n['category'] == category.toUpperCase()).toList();
     }
-    return allFallback
-        .where((n) => n['category'] == category.toUpperCase())
-        .toList();
+    if (source != null && source.toUpperCase() != 'ALL') {
+      filtered = filtered.where((n) => (n['source_type'] as String?)?.toUpperCase() == source.toUpperCase()).toList();
+    }
+    return filtered;
   }
 }

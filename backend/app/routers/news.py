@@ -1,5 +1,5 @@
 """
-WeatherGPT — Phase 5.2: Weather News Feed Endpoints
+WeatherGPT — Phase 5.2 / F9-11: Multi-Source Weather News Feed Endpoints
 """
 
 from typing import Optional
@@ -12,15 +12,22 @@ router = APIRouter()
 @router.get("/weather")
 async def get_weather_news_feed(
     category: Optional[str] = Query(None, description="Category filter (e.g. ALL, ALERTS, AGRICULTURE, MONSOON, CLIMATE, CYCLONE)"),
-    limit: int = Query(10, ge=1, le=50, description="Max news articles to return"),
+    source: Optional[str] = Query(None, description="Source type filter (e.g. ALL, GOVERNMENT, GLOBAL, SCIENCE)"),
+    limit: int = Query(15, ge=1, le=50, description="Max news articles to return"),
 ):
     """
     Returns AI-curated, semantically deduplicated meteorological news
-    with verifiable citations from IMD, NDMA, and agricultural research institutes.
+    aggregated across Government authorities (IMD, NDMA), Global wires (BBC, Reuters, AP, TOI),
+    and Climate/Agro Science institutes (ICAR, ISRO, ECMWF).
     """
-    items = weather_news_service.get_weather_news(category=category, limit=limit)
+    items = weather_news_service.get_weather_news(
+        category=category,
+        source_type=source,
+        limit=limit,
+    )
     return {
-        "category": category or "ALL",
+        "category": (category or "ALL").upper(),
+        "source": (source or "ALL").upper(),
         "total": len(items),
         "articles": items,
     }
@@ -38,4 +45,17 @@ async def get_news_categories():
             {"id": "MONSOON", "label": "Monsoon Watch", "icon": "water_drop"},
             {"id": "CLIMATE", "label": "Microclimate & UHI", "icon": "thermostat"},
         ]
+    }
+
+
+@router.get("/sources")
+async def get_news_sources():
+    """
+    Returns the roster of active multi-source meteorological, media,
+    and research news sources.
+    """
+    sources = weather_news_service.get_news_sources()
+    return {
+        "total": len(sources),
+        "sources": sources,
     }
