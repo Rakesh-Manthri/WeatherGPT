@@ -52,13 +52,27 @@ class WeatherNextService:
             scopes = ["https://www.googleapis.com/auth/cloud-platform"]
 
             if os.path.isfile(key_path):
-                self._credentials = service_account.Credentials.from_service_account_file(
-                    key_path,
-                    scopes=scopes,
-                )
+                import json
+                try:
+                    with open(key_path, "r", encoding="utf-8") as f:
+                        key_info = json.load(f)
+                    if key_info.get("type") == "authorized_user":
+                        from google.oauth2.credentials import Credentials as UserCredentials
+                        self._credentials = UserCredentials.from_authorized_user_file(
+                            key_path, scopes=scopes
+                        )
+                        logger.info(f"WeatherNext 3: loaded authorized user credentials from {key_path}")
+                    else:
+                        self._credentials = service_account.Credentials.from_service_account_file(
+                            key_path, scopes=scopes
+                        )
+                        logger.info(f"WeatherNext 3: loaded service account credentials from {key_path}")
+                except Exception as parse_err:
+                    self._credentials, _ = google.auth.default(scopes=scopes)
+                    logger.warning(f"WeatherNext 3: failed loading {key_path}, defaulted to ADC: {parse_err}")
+
                 # obstore's GCS store discovers credentials via ADC.
                 os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", key_path)
-                logger.info("WeatherNext 3: service account credentials loaded.")
             else:
                 self._credentials, _ = google.auth.default(scopes=scopes)
                 logger.info("WeatherNext 3: application default credentials loaded.")
@@ -416,12 +430,21 @@ class WeatherNextService:
         """
         from ..config import settings
         mode = getattr(settings, "WEATHERNEXT_MODE", "auto")
-        sa_email = getattr(self._credentials, "service_account_email", "N/A") if self._credentials else "N/A"
+        if self._credentials and hasattr(self._credentials, "service_account_email"):
+            identity = self._credentials.service_account_email
+            identity_type = "service_account"
+        elif self._credentials and hasattr(self._credentials, "client_id"):
+            identity = "Personal Google Account (OAuth2 Authorized User)"
+            identity_type = "authorized_user"
+        else:
+            identity = "N/A"
+            identity_type = "none"
 
         result: Dict[str, Any] = {
             "mode": mode,
             "project_id": self._project_id,
-            "service_account": sa_email,
+            "identity": identity,
+            "identity_type": identity_type,
             "credentials_initialized": self.is_initialized,
             "target_bucket": self.BUCKET,
             "last_error": self.last_error,
@@ -458,13 +481,13 @@ class WeatherNextService:
             if "403" in err_str or "AccessDenied" in err_str or "PermissionDenied" in err_str:
                 result["status"] = "403_ACCESS_DENIED"
                 result["root_cause"] = (
-                    f"Service account '{sa_email}' does not have 'storage.objects.get' permission "
+                    f"Identity '{identity}' does not have 'storage.objects.get' permission "
                     f"on Google DeepMind's bucket 'gs://{self.BUCKET}' (or bucket requires DeepMind allowlist access)."
                 )
                 result["how_to_resolve"] = {
                     "option_a_live_allowlist": (
                         "Submit the Google DeepMind WeatherNext data access request form for "
-                        f"service account: {sa_email}"
+                        f"identity: {identity}"
                     ),
                     "option_b_simulation": (
                         "Set WEATHERNEXT_MODE=simulation in backend/.env to serve the WeatherNext 3 "
