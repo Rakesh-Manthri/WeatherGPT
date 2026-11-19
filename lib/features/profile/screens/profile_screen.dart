@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../chat/screens/chat_screen.dart';
 import '../../../core/localization/language_picker_sheet.dart';
+import '../../../core/cache/local_chat_store.dart';
 import 'settings_screen.dart';
 import '../../weather/screens/live_weather_screen.dart';
 
@@ -31,7 +32,7 @@ class ProfileScreenState extends State<ProfileScreen> {
     try {
       final response = await Supabase.instance.client
           .from('chat_sessions')
-          .select('id, title, is_pinned, created_at, chat_messages(content, role, created_at)')
+          .select('id, title, is_pinned, created_at, chat_messages(content, role, created_at, weather_data)')
           .order('is_pinned', ascending: false)
           .order('created_at', ascending: false)
           .limit(50);
@@ -40,9 +41,18 @@ class ProfileScreenState extends State<ProfileScreen> {
         setState(() {
           _chatSessions = response;
         });
+        // Cache sessions and messages locally in Hive
+        LocalChatStore.saveSessionsList(response);
       }
     } catch (e) {
-      debugPrint('Error fetching chat sessions: $e');
+      debugPrint('Error fetching chat sessions from Supabase: $e');
+      // Offline fallback: load from LocalChatStore
+      final cached = LocalChatStore.getCachedSessions();
+      if (mounted && cached.isNotEmpty) {
+        setState(() {
+          _chatSessions = cached;
+        });
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -54,6 +64,7 @@ class ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _togglePin(String sessionId, bool pin) async {
     try {
+      await LocalChatStore.updateSessionPin(sessionId, pin);
       await Supabase.instance.client
           .from('chat_sessions')
           .update({'is_pinned': pin})
@@ -113,6 +124,7 @@ class ProfileScreenState extends State<ProfileScreen> {
               if (newTitle.isNotEmpty) {
                 Navigator.pop(ctx);
                 try {
+                  await LocalChatStore.updateSessionTitle(sessionId, newTitle);
                   await Supabase.instance.client
                       .from('chat_sessions')
                       .update({'title': newTitle})
@@ -167,6 +179,7 @@ class ProfileScreenState extends State<ProfileScreen> {
             onPressed: () async {
               Navigator.pop(ctx);
               try {
+                await LocalChatStore.deleteSession(sessionId);
                 await Supabase.instance.client
                     .from('chat_sessions')
                     .delete()

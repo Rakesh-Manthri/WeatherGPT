@@ -4,8 +4,10 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 import '../../../core/api/weather_api_client.dart';
 import '../../../core/ai/offline_edge_ai_service.dart';
+import '../../../core/cache/local_chat_store.dart';
 import '../../../core/location/location_service.dart';
 import '../../../core/localization/locale_service.dart';
 import '../../../core/localization/language_picker_sheet.dart';
@@ -48,6 +50,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _currentSessionId;
   int? _speakingMessageIndex;
   int _ttsToken = 0;
+  bool _isOfflineCache = false;
 
   @override
   void initState() {
@@ -84,76 +87,132 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  User? _getSupabaseUser() {
+    try {
+      return Supabase.instance.client.auth.currentUser;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _ensureSession() async {
     // In incognito mode, do NOT create or persist a chat session in history
     if (widget.isIncognito) return;
 
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null || _currentSessionId != null) return;
-    try {
-      final res = await Supabase.instance.client
-          .from('chat_sessions')
-          .insert({'user_id': user.id})
-          .select('id')
-          .single();
-      _currentSessionId = res['id'] as String?;
-    } catch (e) {
-      debugPrint('Error creating chat session: $e');
+    if (_currentSessionId != null && _currentSessionId!.isNotEmpty) return;
+
+    final user = _getSupabaseUser();
+    if (user != null) {
+      try {
+        final res = await Supabase.instance.client
+            .from('chat_sessions')
+            .insert({'user_id': user.id})
+            .select('id')
+            .single();
+        _currentSessionId = res['id'] as String?;
+      } catch (e) {
+        debugPrint('Error creating chat session in Supabase: $e');
+      }
     }
+
+    _currentSessionId ??= const Uuid().v4();
+
+    // Cache session metadata in Hive
+    await LocalChatStore.saveSession(
+      sessionId: _currentSessionId!,
+      title: 'Weather Conversation',
+      createdAt: DateTime.now(),
+    );
   }
 
-  Future<void> _saveMessageToDb(String content, String role) async {
+  Future<void> _saveMessageToDb(
+    String content,
+    String role, {
+    Map<String, dynamic>? weatherData,
+    ChatMessage? fullMessage,
+  }) async {
     // In incognito mode, do NOT store messages in history
     if (widget.isIncognito) return;
 
+    await _ensureSession();
+    if (_currentSessionId == null) return;
+
+    final msgToSave = fullMessage ??
+        ChatMessage(
+          text: content,
+          isUser: role == 'user',
+          timestamp: DateTime.now(),
+          weatherData: weatherData,
+        );
+
+    // 1. Always write to Local Hive Cache (offline safe, preserves weatherData)
+    await LocalChatStore.appendMessage(_currentSessionId!, msgToSave);
+
+    // 2. Persist to Supabase if user is logged in and connection is alive
     try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) return;
-      await _ensureSession();
-      if (_currentSessionId != null) {
-        await Supabase.instance.client.from('chat_messages').insert({
+      final user = _getSupabaseUser();
+      if (user != null) {
+        final payload = <String, dynamic>{
           'session_id': _currentSessionId,
           'role': role,
           'content': content,
-        });
+        };
+        if (weatherData != null && weatherData.isNotEmpty) {
+          payload['weather_data'] = weatherData;
+        }
+        await Supabase.instance.client.from('chat_messages').insert(payload);
       }
     } catch (e) {
-      debugPrint('Error saving message to Supabase: $e');
+      debugPrint('Error saving message to Supabase (saved locally in Hive): $e');
     }
   }
 
   Future<void> _loadExistingMessages() async {
     if (widget.isIncognito) return;
+    if (_currentSessionId == null) return;
 
+    List<ChatMessage> loaded = [];
+    bool loadedFromSupabase = false;
+
+    // 1. Attempt loading from Supabase first
     try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null || _currentSessionId == null) return;
+      final user = _getSupabaseUser();
+      if (user != null) {
+        final response = await Supabase.instance.client
+            .from('chat_messages')
+            .select()
+            .eq('session_id', _currentSessionId!)
+            .order('created_at', ascending: true);
 
-      final response = await Supabase.instance.client
-          .from('chat_messages')
-          .select()
-          .eq('session_id', _currentSessionId!)
-          .order('created_at', ascending: true);
-
-      if (mounted && response.isNotEmpty) {
-        setState(() {
-          _messages.clear();
-          for (final item in response) {
-            _messages.add(
-              ChatMessage(
-                text: item['content'] ?? '',
-                isUser: item['role'] == 'user',
-                timestamp:
-                    DateTime.tryParse(item['created_at'] ?? '') ??
-                    DateTime.now(),
-              ),
-            );
-          }
-        });
-        _scrollToBottom();
+        if (response.isNotEmpty) {
+          loaded = response
+              .whereType<Map>()
+              .map((item) => ChatMessage.fromMap(Map<String, dynamic>.from(item)))
+              .toList();
+          loadedFromSupabase = true;
+          // Synchronize fresh messages into Hive
+          await LocalChatStore.saveMessages(_currentSessionId!, loaded);
+        }
       }
     } catch (e) {
-      debugPrint('Error loading chat messages: $e');
+      debugPrint('Error loading chat messages from Supabase: $e');
+    }
+
+    // 2. Fallback to Local Hive Cache if Supabase unavailable or returned empty
+    if (!loadedFromSupabase || loaded.isEmpty) {
+      final localMsgs = LocalChatStore.getCachedMessages(_currentSessionId!);
+      if (localMsgs.isNotEmpty) {
+        loaded = localMsgs;
+        _isOfflineCache = true;
+      }
+    }
+
+    if (mounted && loaded.isNotEmpty) {
+      setState(() {
+        _messages.clear();
+        _messages.addAll(loaded);
+      });
+      _scrollToBottom();
     }
   }
 
@@ -172,16 +231,15 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty || _isTyping) return;
 
+    final userMsg = ChatMessage(text: text, isUser: true, timestamp: DateTime.now());
     setState(() {
-      _messages.add(
-        ChatMessage(text: text, isUser: true, timestamp: DateTime.now()),
-      );
+      _messages.add(userMsg);
       _isTyping = true;
     });
     _textController.clear();
 
-    // Save user message to Supabase
-    _saveMessageToDb(text, 'user');
+    // Save user message to Hive & Supabase
+    _saveMessageToDb(text, 'user', fullMessage: userMsg);
     _scrollToBottom();
 
     try {
@@ -206,39 +264,44 @@ class _ChatScreenState extends State<ChatScreen> {
       final isMapRequested = _isMapIntent(text);
 
       if (mounted) {
+        final assistantMsg = ChatMessage(
+          text: result.reply,
+          isUser: false,
+          timestamp: DateTime.now(),
+          weatherData: result.weatherData,
+          ttsText: result.ttsText,
+          ttsLocale: result.ttsLocale,
+          detectedLanguage: result.detectedLanguage,
+          isOfflineEdgeAi: result.isOfflineEdgeAi,
+          offlineCacheAge: result.offlineCacheAge,
+          showMapBubble: isMapRequested,
+        );
+
         setState(() {
           _isTyping = false;
-          _messages.add(
-            ChatMessage(
-              text: result.reply,
-              isUser: false,
-              timestamp: DateTime.now(),
-              weatherData: result.weatherData,
-              ttsText: result.ttsText,
-              ttsLocale: result.ttsLocale,
-              detectedLanguage: result.detectedLanguage,
-              isOfflineEdgeAi: result.isOfflineEdgeAi,
-              offlineCacheAge: result.offlineCacheAge,
-              showMapBubble: isMapRequested,
-            ),
-          );
+          _messages.add(assistantMsg);
         });
-        // Save assistant reply to Supabase
-        _saveMessageToDb(result.reply, 'assistant');
+        // Save assistant reply with weatherData to Hive & Supabase
+        _saveMessageToDb(
+          result.reply,
+          'assistant',
+          weatherData: result.weatherData,
+          fullMessage: assistantMsg,
+        );
         _scrollToBottom();
       }
     } catch (e) {
       if (mounted) {
+        final errorMsg = ChatMessage(
+          text: "Connection Error: $e",
+          isUser: false,
+          timestamp: DateTime.now(),
+        );
         setState(() {
           _isTyping = false;
-          _messages.add(
-            ChatMessage(
-              text: "Connection Error: $e",
-              isUser: false,
-              timestamp: DateTime.now(),
-            ),
-          );
+          _messages.add(errorMsg);
         });
+        _saveMessageToDb(errorMsg.text, 'assistant', fullMessage: errorMsg);
         _scrollToBottom();
       }
     }
@@ -527,6 +590,31 @@ class _ChatScreenState extends State<ChatScreen> {
                           color: Color(0xFFE65100),
                           decoration: TextDecoration.underline,
                         ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (_isOfflineCache)
+              Container(
+                margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F4F8),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFCFD8DC)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.cloud_done_outlined, size: 14, color: Color(0xFF455A64)),
+                    SizedBox(width: 6),
+                    Text(
+                      'Loaded from local offline cache',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF37474F),
                       ),
                     ),
                   ],

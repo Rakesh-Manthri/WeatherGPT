@@ -14,6 +14,8 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'core/localization/locale_service.dart';
 import 'core/api/weather_api_client.dart';
 import 'core/ai/offline_edge_ai_service.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'core/cache/local_chat_store.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,6 +23,9 @@ void main() async {
   try {
     await dotenv.load(fileName: ".env");
     
+    await Hive.initFlutter();
+    await LocalChatStore.init();
+
     await Supabase.initialize(
       url: dotenv.env['SUPABASE_URL'] ?? '',
       publishableKey: dotenv.env['SUPABASE_ANON_KEY'] ?? '',
