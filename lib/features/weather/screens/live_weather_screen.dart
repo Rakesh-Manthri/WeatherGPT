@@ -1109,7 +1109,7 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
             const Padding(
               padding: EdgeInsets.only(top: 8, left: 2),
               child: Text(
-                '°C',
+                '°c',
                 style: TextStyle(
                   fontFamily: 'sans-serif',
                   fontSize: 32,
@@ -1159,25 +1159,6 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
                   color: Colors.white,
                 ),
               ),
-              if (data.ensembleSpread != null) ...[
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 8),
-                  width: 3,
-                  height: 3,
-                  decoration: const BoxDecoration(
-                    color: Colors.white54,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                Text(
-                  '±${data.ensembleSpread!.toStringAsFixed(1)}°C Spread',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white.withValues(alpha: 0.85),
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -1243,17 +1224,15 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
                     color: item.iconColor,
                   ),
                   const SizedBox(width: 12),
-                  SizedBox(
-                    width: 90,
-                    child: Text(
-                      item.dayName,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white,
-                      ),
+                  Text(
+                    item.dayName,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white,
                     ),
                   ),
+                  const SizedBox(width: 8),
                   Text(
                     item.conditionName,
                     style: TextStyle(

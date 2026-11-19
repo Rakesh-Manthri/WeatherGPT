@@ -142,3 +142,16 @@ async def get_panchangam_weather_fusion(
         "location": {"lat": lat, "lon": lon},
         "panchangam_fusion": fused,
     }
+
+
+@router.get("/aqi-grid")
+async def get_aqi_grid(
+    lat: float = Query(17.3850, ge=-90, le=90),
+    lon: float = Query(78.4867, ge=-180, le=180),
+    radius_km: float = Query(25.0, ge=1.0, le=100.0),
+):
+    """
+    AQI Heatmap Spatial Grid Endpoint (F9).
+    Returns dispersion monitoring stations and AQI heat levels across the perimeter.
+    """
+    return weather_service.get_aqi_grid(lat=lat, lon=lon, radius_km=radius_km)

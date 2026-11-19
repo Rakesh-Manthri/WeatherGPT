@@ -81,6 +81,19 @@ class TestWeatherNextPrimaryImplementation(unittest.TestCase):
         self.assertIn("credentials_initialized", diag)
         self.assertIn("status", diag)
 
+    def test_aqi_grid_generation(self):
+        grid_data = self.weather_service.get_aqi_grid(17.3850, 78.4867, radius_km=25.0)
+        self.assertIn("center", grid_data)
+        self.assertIn("stations", grid_data)
+        self.assertIn("legend", grid_data)
+        self.assertGreaterEqual(len(grid_data["stations"]), 5)
+        # Check central core station
+        center = next(s for s in grid_data["stations"] if s["is_center"])
+        self.assertIn("aqi", center)
+        self.assertIn("category", center)
+        self.assertIn("color", center)
+        self.assertIn("pm25", center)
+
 
 if __name__ == "__main__":
     unittest.main()

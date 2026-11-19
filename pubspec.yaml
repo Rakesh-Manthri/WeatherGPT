@@ -51,6 +51,7 @@ dependencies:
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   connectivity_plus: ^7.3.1
+  share_plus: ^13.3.1
 
 dev_dependencies:
   flutter_test:

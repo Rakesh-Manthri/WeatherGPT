@@ -55,7 +55,13 @@ void main() {
 
     // Verify top navigation controls exist
     expect(find.byIcon(Icons.arrow_back_ios_new_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.share_rounded), findsOneWidget);
     expect(find.byIcon(Icons.article_outlined), findsOneWidget);
+
+    // Verify GIS layer selector pills
+    expect(find.text('Clean Map'), findsOneWidget);
+    expect(find.text('Rain Radar'), findsOneWidget);
+    expect(find.text('AQI Heatmap'), findsOneWidget);
 
     // Tap Chat toggle option (index 0)
     final chatToggleOption = find.byIcon(Icons.chat_bubble_outline_rounded);
@@ -64,6 +70,80 @@ void main() {
     await tester.pump();
 
     expect(backToChatCalled, isTrue);
+  });
+
+  testWidgets('MapScreen activates Rainfall Radar Animation and controls', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MapScreen(
+          weatherData: testWeatherData,
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Tap 'Rain Radar' layer tab
+    await tester.tap(find.text('Rain Radar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Verify Radar animation controls & dBZ legend render
+    expect(find.text('Rainfall Radar Sweep'), findsOneWidget);
+    expect(find.textContaining('dBZ'), findsOneWidget);
+    expect(find.byIcon(Icons.pause_rounded), findsOneWidget);
+
+    // Tap pause button
+    await tester.tap(find.byIcon(Icons.pause_rounded));
+    await tester.pump();
+    expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+  });
+
+  testWidgets('MapScreen activates AQI Heatmap layer and displays dispersion legend', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MapScreen(
+          weatherData: testWeatherData,
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Tap 'AQI Heatmap' layer tab
+    await tester.tap(find.text('AQI Heatmap'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // Verify AQI legend renders
+    expect(find.textContaining('Air Quality Heatmap'), findsOneWidget);
+  });
+
+  testWidgets('MapScreen opens Share Weather Report Card preview modal', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MapScreen(
+          weatherData: testWeatherData,
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Tap Share Report Card button
+    final shareBtn = find.byIcon(Icons.share_rounded);
+    expect(shareBtn, findsOneWidget);
+    await tester.tap(shareBtn);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Verify share modal and WeatherShareCard render
+    expect(find.text('Share Weather Report'), findsOneWidget);
+    expect(find.text('Weather GPT'), findsOneWidget);
+    expect(find.text('Share Report Card'), findsOneWidget);
   });
 
   testWidgets('MapScreen falls back gracefully to default coordinates when no telemetry passed', (tester) async {

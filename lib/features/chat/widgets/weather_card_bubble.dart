@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'weather_map_bubble.dart';
+import '../services/weather_share_service.dart';
 import '../../weather/screens/live_weather_screen.dart';
 
 class WeatherCardBubble extends StatefulWidget {
@@ -402,6 +403,29 @@ class _WeatherCardBubbleState extends State<WeatherCardBubble> {
                         ),
                       ),
                     ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.share_outlined, size: 18, color: Color(0xFF1C1C1E)),
+                    tooltip: 'Share Weather Report',
+                    onPressed: () {
+                      WeatherShareService.instance.showShareModal(
+                        context,
+                        weatherData: widget.weatherData,
+                        locationName: locationName,
+                        lat: lat,
+                        lon: lon,
+                      );
+                    },
                   ),
                 ),
                 const SizedBox(width: 8),

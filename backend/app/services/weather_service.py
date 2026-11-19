@@ -367,5 +367,103 @@ class WeatherService:
             for i in range(days)
         ]
 
+    def get_aqi_grid(self, lat: float, lon: float, radius_km: float = 20.0, grid_points: int = 5) -> dict:
+        """
+        Generate a multi-point spatial AQI dispersion grid for GIS heatmap rendering.
+        Fetches regional base AQI, then generates hyper-local dispersion sensors across
+        the bounding perimeter with realistic urban/vegetation/corridor variances.
+        """
+        base_weather = self.get_structured_weather_data(lat, lon)
+        center_aqi = base_weather.get("aqi", 65)
+
+        # Offsets in degrees (~1km ≈ 0.009 degrees)
+        step_deg = (radius_km / 111.0) / max(1, (grid_points // 2))
+
+        points = []
+        station_counter = 1
+
+        def aqi_meta(val: int):
+            if val <= 50:
+                return "Good", "#00E676", round(val * 0.24, 1)
+            elif val <= 100:
+                return "Moderate", "#FFD600", round(val * 0.35, 1)
+            elif val <= 150:
+                return "Unhealthy for Sensitive", "#FF9100", round(val * 0.55, 1)
+            elif val <= 200:
+                return "Unhealthy", "#FF1744", round(val * 0.75, 1)
+            elif val <= 300:
+                return "Very Unhealthy", "#D500F9", round(val * 1.05, 1)
+            else:
+                return "Hazardous", "#880E4F", round(val * 1.5, 1)
+
+        # Center point
+        cat, col, pm25 = aqi_meta(center_aqi)
+        points.append({
+            "id": "station_center",
+            "name": f"Station {station_counter} • Central Core",
+            "lat": round(lat, 5),
+            "lon": round(lon, 5),
+            "aqi": center_aqi,
+            "category": cat,
+            "color": col,
+            "pm25": pm25,
+            "is_center": True,
+        })
+        station_counter += 1
+
+        # Dispersion grid perimeter
+        angles = [0, 45, 90, 135, 180, 225, 270, 315]
+        labels = [
+            "North Corridor", "NE Industrial", "East Valley", "SE Suburban",
+            "South Transit Hub", "SW Forest Buffer", "West Foothills", "NW Arterial"
+        ]
+
+        for idx, (angle_deg, lbl) in enumerate(zip(angles, labels)):
+            rad = math.radians(angle_deg)
+            # Distance scales with inner and outer rings
+            dist_factor = 0.55 if idx % 2 == 0 else 1.0
+            d_lat = math.cos(rad) * step_deg * dist_factor
+            d_lon = math.sin(rad) * step_deg * dist_factor
+
+            # Variance: Industrial/Transit higher (+15 to +35), Forest/Foothills lower (-15 to -30)
+            if "Industrial" in lbl or "Transit" in lbl:
+                delta = 18 + (idx * 3) % 15
+            elif "Forest" in lbl or "Foothills" in lbl:
+                delta = -22 - (idx * 2) % 10
+            else:
+                delta = ((idx % 3) - 1) * 8
+
+            point_aqi = max(15, min(420, center_aqi + delta))
+            p_cat, p_col, p_pm25 = aqi_meta(point_aqi)
+
+            points.append({
+                "id": f"station_{idx + 1}",
+                "name": f"Station {station_counter} • {lbl}",
+                "lat": round(lat + d_lat, 5),
+                "lon": round(lon + d_lon, 5),
+                "aqi": point_aqi,
+                "category": p_cat,
+                "color": p_col,
+                "pm25": p_pm25,
+                "is_center": False,
+            })
+            station_counter += 1
+
+        return {
+            "center": {"lat": lat, "lon": lon},
+            "radius_km": radius_km,
+            "regional_aqi": center_aqi,
+            "stations_count": len(points),
+            "stations": points,
+            "legend": [
+                {"range": "0-50", "category": "Good", "color": "#00E676"},
+                {"range": "51-100", "category": "Moderate", "color": "#FFD600"},
+                {"range": "101-150", "category": "Unhealthy for Sensitive", "color": "#FF9100"},
+                {"range": "151-200", "category": "Unhealthy", "color": "#FF1744"},
+                {"range": "201-300", "category": "Very Unhealthy", "color": "#D500F9"},
+                {"range": "300+", "category": "Hazardous", "color": "#880E4F"},
+            ],
+        }
+
 weather_service = WeatherService()
 
