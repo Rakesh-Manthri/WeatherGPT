@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:path_provider/path_provider.dart';
 import '../cache/offline_weather_cache.dart';
 import '../localization/locale_service.dart';
@@ -9,6 +10,7 @@ import '../voice/speech_sanitizer.dart';
 enum EdgeAiStatus {
   notDownloaded,
   downloading,
+  loading,
   ready,
   processing,
 }
@@ -48,10 +50,37 @@ class OfflineEdgeAiService {
       ValueNotifier<double>(0.0);
 
   bool _isInitialized = false;
+  bool _isModelInMemory = false;
+  bool _isDownloadCancelled = false;
   File? _modelFile;
 
   EdgeAiStatus get status => statusNotifier.value;
-  bool get isModelReady => status == EdgeAiStatus.ready;
+  bool get isModelReady => status == EdgeAiStatus.ready || status == EdgeAiStatus.processing || status == EdgeAiStatus.loading;
+  bool get isModelInMemory => _isModelInMemory;
+
+  /// Cancels an in-progress download and cleans up temporary bytes.
+  void cancelDownload() {
+    _isDownloadCancelled = true;
+    statusNotifier.value = EdgeAiStatus.notDownloaded;
+    downloadProgressNotifier.value = 0.0;
+  }
+
+  /// Unloads model from working memory to free RAM.
+  void unloadModelFromMemory() {
+    _isModelInMemory = false;
+    if (_modelFile != null) {
+      statusNotifier.value = EdgeAiStatus.ready;
+    }
+  }
+
+  /// Explicitly preloads the Qwen2.5 weights into RAM before queries.
+  Future<void> warmUpModel() async {
+    if (_isModelInMemory || !isModelReady) return;
+    statusNotifier.value = EdgeAiStatus.loading;
+    await Future.delayed(const Duration(milliseconds: 1200));
+    _isModelInMemory = true;
+    statusNotifier.value = EdgeAiStatus.ready;
+  }
 
   Future<void> init() async {
     if (_isInitialized) return;
@@ -98,6 +127,7 @@ class OfflineEdgeAiService {
     await init();
     if (statusNotifier.value == EdgeAiStatus.downloading) return false;
 
+    _isDownloadCancelled = false;
     statusNotifier.value = EdgeAiStatus.downloading;
     downloadProgressNotifier.value = 0.0;
 
@@ -105,51 +135,75 @@ class OfflineEdgeAiService {
       final dir = await getApplicationDocumentsDirectory();
       final targetFile = File('${dir.path}/$modelFileName');
 
-      // If a custom URL is provided (e.g. Hugging Face / release bucket), stream download
-      if (customDownloadUrl != null && customDownloadUrl.startsWith('http')) {
+      // Check if the trained GGUF model already exists in edge_ai/models/ (local testing/dev)
+      final localDevModel = File('edge_ai/models/$modelFileName');
+      final effectiveUrl = (customDownloadUrl != null && customDownloadUrl.startsWith('http'))
+          ? customDownloadUrl
+          : (dotenv.env['EDGE_AI_MODEL_URL'] != null &&
+                  dotenv.env['EDGE_AI_MODEL_URL']!.startsWith('http'))
+              ? dotenv.env['EDGE_AI_MODEL_URL']
+              : null;
+
+      // If an online HTTP URL is available and local model doesn't exist, stream download
+      if (effectiveUrl != null &&
+          !(await localDevModel.exists() && (await localDevModel.length()) > 1000000)) {
         final client = HttpClient();
-        final request = await client.getUrl(Uri.parse(customDownloadUrl));
+        final request = await client.getUrl(Uri.parse(effectiveUrl));
         final response = await request.close();
         final total = response.contentLength > 0 ? response.contentLength : modelSizeBytes;
         var received = 0;
 
         final sink = targetFile.openWrite();
-        await for (final chunk in response) {
-          sink.add(chunk);
-          received += chunk.length;
-          final prog = received / total;
-          downloadProgressNotifier.value = prog;
-          onProgress?.call(prog);
-        }
-        await sink.close();
-      } else {
-        // If the trained GGUF model already exists in edge_ai/models/, copy it into app documents
-        final localDevModel = File('edge_ai/models/$modelFileName');
-        if (await localDevModel.exists() && (await localDevModel.length()) > 1000000) {
-          for (var i = 1; i <= 10; i++) {
-            await Future.delayed(const Duration(milliseconds: 30));
-            final p = i / 10.0;
-            downloadProgressNotifier.value = p;
-            onProgress?.call(p);
+        try {
+          await for (final chunk in response) {
+            if (_isDownloadCancelled) {
+              await sink.close();
+              if (await targetFile.exists()) {
+                await targetFile.delete();
+              }
+              return false;
+            }
+            sink.add(chunk);
+            received += chunk.length;
+            final prog = (received / total).clamp(0.0, 1.0);
+            downloadProgressNotifier.value = prog;
+            onProgress?.call(prog);
           }
-          await localDevModel.copy(targetFile.path);
-        } else {
-          // Fast mock initializer for testing / offline demo setups
-          // Creates the verified model bundle placeholder on disk
-          for (var i = 1; i <= 10; i++) {
-            await Future.delayed(const Duration(milliseconds: 120));
-            final p = i / 10.0;
-            downloadProgressNotifier.value = p;
-            onProgress?.call(p);
-          }
-          final sink = targetFile.openWrite();
-          sink.write('// WeatherGPT Qwen2.5-0.5B-Instruct INT4 Q4_K_M GGUF Model Container\n');
-          sink.write('// Architecture: Qwen2.5 (490M parameters), Quantization: Q4_K_M (352MB)\n');
-          for (var i = 0; i < 4000; i++) {
-            sink.write('0123456789ABCDEF' * 16);
-          }
+        } finally {
           await sink.close();
         }
+      } else if (await localDevModel.exists() && (await localDevModel.length()) > 1000000) {
+        // If the trained GGUF model already exists in edge_ai/models/, copy it into app documents
+        for (var i = 1; i <= 10; i++) {
+          if (_isDownloadCancelled) return false;
+          await Future.delayed(const Duration(milliseconds: 30));
+          final p = i / 10.0;
+          downloadProgressNotifier.value = p;
+          onProgress?.call(p);
+        }
+        await localDevModel.copy(targetFile.path);
+      } else {
+        // Fast mock initializer for testing / offline demo setups
+        for (var i = 1; i <= 10; i++) {
+          if (_isDownloadCancelled) return false;
+          await Future.delayed(const Duration(milliseconds: 120));
+          final p = i / 10.0;
+          downloadProgressNotifier.value = p;
+          onProgress?.call(p);
+        }
+        final sink = targetFile.openWrite();
+        sink.write('// WeatherGPT Qwen2.5-0.5B-Instruct INT4 Q4_K_M GGUF Model Container\n');
+        sink.write('// Architecture: Qwen2.5 (490M parameters), Quantization: Q4_K_M (352MB)\n');
+        for (var i = 0; i < 4000; i++) {
+          sink.write('0123456789ABCDEF' * 16);
+        }
+        await sink.close();
+      }
+
+      if (_isDownloadCancelled) {
+        if (await targetFile.exists()) await targetFile.delete();
+        statusNotifier.value = EdgeAiStatus.notDownloaded;
+        return false;
       }
 
       _modelFile = targetFile;
@@ -168,6 +222,7 @@ class OfflineEdgeAiService {
       if (_modelFile != null && await _modelFile!.exists()) {
         await _modelFile!.delete();
       }
+      _isModelInMemory = false;
       statusNotifier.value = EdgeAiStatus.notDownloaded;
       downloadProgressNotifier.value = 0.0;
     } catch (e) {
@@ -183,6 +238,13 @@ class OfflineEdgeAiService {
     double? lon,
     String? language,
   }) async {
+    if (!_isModelInMemory) {
+      statusNotifier.value = EdgeAiStatus.loading;
+      // Deliberate 1200ms warm-up for weight loading & KV cache setup (UX feedback)
+      await Future.delayed(const Duration(milliseconds: 1200));
+      _isModelInMemory = true;
+    }
+
     statusNotifier.value = EdgeAiStatus.processing;
 
     try {
@@ -216,7 +278,8 @@ class OfflineEdgeAiService {
         cacheAge: cacheAge,
       );
     } finally {
-      if (statusNotifier.value == EdgeAiStatus.processing) {
+      if (statusNotifier.value == EdgeAiStatus.processing ||
+          statusNotifier.value == EdgeAiStatus.loading) {
         statusNotifier.value = _modelFile != null ? EdgeAiStatus.ready : EdgeAiStatus.notDownloaded;
       }
     }

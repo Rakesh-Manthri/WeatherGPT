@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/api/weather_api_client.dart';
+import '../../../core/ai/offline_edge_ai_service.dart';
 import '../../../core/location/location_service.dart';
 import '../../../core/localization/locale_service.dart';
 import '../../../core/localization/language_picker_sheet.dart';
@@ -11,6 +13,7 @@ import '../../../core/voice/speech_sanitizer.dart';
 import '../models/chat_message.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/typing_indicator.dart';
+import '../widgets/edge_ai_loading_indicator.dart';
 import '../widgets/activity_chips_bar.dart';
 import '../../map/screens/map_screen.dart';
 
@@ -251,6 +254,55 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       }
     });
+  }
+
+  void _copyMessage(String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Copied to clipboard'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+  }
+
+  void _editMessage(int index) {
+    if (index >= _messages.length) return;
+    final msg = _messages[index];
+    _textController.text = msg.text;
+    setState(() {
+      // Remove this user message and any immediately subsequent assistant reply
+      if (index + 1 < _messages.length && !_messages[index + 1].isUser) {
+        _messages.removeAt(index + 1);
+      }
+      _messages.removeAt(index);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Editing message... modify below and tap send'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _retryMessage(int index) {
+    if (_isTyping) return;
+    // Find preceding user query
+    String? queryToRetry;
+    for (var i = index - 1; i >= 0; i--) {
+      if (_messages[i].isUser) {
+        queryToRetry = _messages[i].text;
+        break;
+      }
+    }
+    if (queryToRetry != null) {
+      setState(() {
+        if (index < _messages.length) {
+          _messages.removeAt(index);
+        }
+      });
+      _sendMessage(queryToRetry);
+    }
   }
 
   Future<void> _toggleSpeakMessage(int index) async {
@@ -537,15 +589,29 @@ class _ChatScreenState extends State<ChatScreen> {
                     );
                   }
                   if (_isTyping && index == _messages.length) {
-                    return const Align(
-                      alignment: Alignment.centerLeft,
-                      child: TypingIndicator(),
+                    return ValueListenableBuilder<EdgeAiStatus>(
+                      valueListenable: OfflineEdgeAiService.instance.statusNotifier,
+                      builder: (context, edgeStatus, _) {
+                        if (edgeStatus == EdgeAiStatus.loading) {
+                          return const Align(
+                            alignment: Alignment.centerLeft,
+                            child: EdgeAiLoadingIndicator(),
+                          );
+                        }
+                        return const Align(
+                          alignment: Alignment.centerLeft,
+                          child: TypingIndicator(),
+                        );
+                      },
                     );
                   }
                   return MessageBubble(
                     message: _messages[index],
                     isSpeaking: _speakingMessageIndex == index,
                     onSpeakTap: () => _toggleSpeakMessage(index),
+                    onCopyTap: () => _copyMessage(_messages[index].text),
+                    onRetryTap: !_messages[index].isUser ? () => _retryMessage(index) : null,
+                    onEditTap: _messages[index].isUser ? () => _editMessage(index) : null,
                     onViewMap: (lat, lon) {
                       _openGisMapScreen(lat, lon, index);
                     },

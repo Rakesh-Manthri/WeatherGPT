@@ -1,8 +1,12 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:weather_gpt/core/ai/device_capability_checker.dart';
 import 'package:weather_gpt/core/ai/offline_edge_ai_service.dart';
 import 'package:weather_gpt/core/api/weather_api_client.dart';
 import 'package:weather_gpt/core/cache/offline_weather_cache.dart';
+import 'package:weather_gpt/features/chat/models/chat_message.dart';
+import 'package:weather_gpt/features/chat/widgets/message_bubble.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -215,6 +219,127 @@ void main() {
 
       // Clean up
       await WeatherApiClient.setForceOfflineMode(false);
+    });
+  });
+
+  group('DeviceCapabilityChecker Hardware Tests', () {
+    test('evaluates device hardware capabilities with fallback gracefully', () async {
+      DeviceCapabilityChecker.resetCache();
+      final result = await DeviceCapabilityChecker.check(forceRefresh: true);
+
+      expect(result, isNotNull);
+      expect(result.freeStorageMb, greaterThanOrEqualTo(0));
+      expect(result.totalRamMb, greaterThan(0));
+      expect(result.cpuAbi.isNotEmpty, isTrue);
+      // Verify cached result returns identical instance
+      final cached = await DeviceCapabilityChecker.check();
+      expect(cached, same(result));
+    });
+
+    test('DeviceCapabilityResult formats diagnostic string correctly', () {
+      const cap = DeviceCapabilityResult(
+        isCapable: true,
+        reason: 'Device compatible',
+        freeStorageMb: 1200,
+        totalRamMb: 4096,
+        cpuAbi: 'arm64-v8a',
+      );
+      expect(cap.isCapable, isTrue);
+      expect(cap.toString().contains('arm64-v8a'), isTrue);
+      expect(cap.toString().contains('1200MB'), isTrue);
+    });
+  });
+
+  group('OfflineEdgeAiService Lifecycle & Loading State Tests', () {
+    test('warmUpModel transitions state to loading and then ready', () async {
+      final edge = OfflineEdgeAiService.instance;
+      await edge.init();
+      edge.unloadModelFromMemory();
+
+      expect(edge.isModelReady, isTrue);
+      expect(edge.isModelInMemory, isFalse);
+
+      // Trigger warm up
+      final warmupFuture = edge.warmUpModel();
+      expect(edge.status, EdgeAiStatus.loading);
+
+      await warmupFuture;
+      expect(edge.isModelInMemory, isTrue);
+      expect(edge.isModelReady, isTrue);
+    });
+
+    test('cancelDownload updates status to notDownloaded and resets progress', () {
+      final edge = OfflineEdgeAiService.instance;
+      edge.statusNotifier.value = EdgeAiStatus.downloading;
+      edge.downloadProgressNotifier.value = 0.5;
+
+      edge.cancelDownload();
+
+      expect(edge.status, EdgeAiStatus.notDownloaded);
+      expect(edge.downloadProgressNotifier.value, 0.0);
+    });
+  });
+
+  group('ChatMessage Model & Actions Tests', () {
+    test('generates unique UUID messageId and sets editability', () {
+      final userMsg = ChatMessage(
+        text: 'What is the temperature?',
+        isUser: true,
+        timestamp: DateTime.now(),
+      );
+      final aiMsg = ChatMessage(
+        text: 'It is 28°C.',
+        isUser: false,
+        timestamp: DateTime.now(),
+      );
+
+      expect(userMsg.id, isNotEmpty);
+      expect(aiMsg.id, isNotEmpty);
+      expect(userMsg.id, isNot(equals(aiMsg.id)));
+      expect(userMsg.isEditable, isTrue);
+      expect(aiMsg.isEditable, isFalse);
+    });
+
+    testWidgets('MessageBubble renders action buttons and invokes callbacks', (tester) async {
+      bool copyTapped = false;
+      bool retryTapped = false;
+      bool speakTapped = false;
+
+      final message = ChatMessage(
+        text: 'Partly cloudy with mild breeze.',
+        isUser: false,
+        timestamp: DateTime.now(),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              message: message,
+              onCopyTap: () => copyTapped = true,
+              onRetryTap: () => retryTapped = true,
+              onSpeakTap: () => speakTapped = true,
+            ),
+          ),
+        ),
+      );
+
+      // Verify Copy, Retry, Listen buttons exist
+      expect(find.text('Copy'), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+      expect(find.text('Listen'), findsOneWidget);
+
+      await tester.tap(find.text('Copy'));
+      await tester.pump();
+      expect(copyTapped, isTrue);
+
+      await tester.tap(find.text('Retry'));
+      await tester.pump();
+      expect(retryTapped, isTrue);
+
+      await tester.tap(find.text('Listen'));
+      await tester.pump();
+      expect(speakTapped, isTrue);
     });
   });
 }

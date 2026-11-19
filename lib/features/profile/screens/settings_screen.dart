@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../auth/screens/auth_screen.dart';
 import '../../../core/localization/language_picker_sheet.dart';
 import '../../../core/api/weather_api_client.dart';
+import '../../../core/ai/device_capability_checker.dart';
 import '../../../core/ai/offline_edge_ai_service.dart';
 import '../../../core/cache/offline_weather_cache.dart';
 
@@ -20,6 +21,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _offlineMode = WeatherApiClient.forceOfflineMode;
   bool _isSyncingCache = false;
   String _cacheSummary = 'Loading cache...';
+  DeviceCapabilityResult? _capabilityResult;
 
   @override
   void initState() {
@@ -33,10 +35,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadOfflineEdgeState() async {
     await WeatherApiClient.loadOfflinePreference();
     await OfflineEdgeAiService.instance.init();
+    final cap = await DeviceCapabilityChecker.check();
     final cacheAge = await OfflineWeatherCache.instance.getCacheAgeString();
     final data = await OfflineWeatherCache.instance.getCachedTelemetry();
     if (mounted) {
       setState(() {
+        _capabilityResult = cap;
         _offlineMode = WeatherApiClient.forceOfflineMode;
         if (data != null) {
           final loc = data['location_name'] ?? 'Local Area';
@@ -47,6 +51,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _cacheSummary = 'No offline telemetry cached yet';
         }
       });
+    }
+  }
+
+  Future<void> _handleDeleteModel() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Delete On-Device Model?',
+          style: TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF1C1C1E)),
+        ),
+        content: const Text(
+          'This will delete the 352MB Qwen2.5 GGUF model weights from device storage. You can re-download it anytime.',
+          style: TextStyle(color: Color(0xFF555555)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF555555))),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete (Free 352MB)', style: TextStyle(color: Color(0xFFD93025))),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await OfflineEdgeAiService.instance.deleteModel();
+      await _loadOfflineEdgeState();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Model deleted. 352MB storage reclaimed.'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 
@@ -488,40 +533,220 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                 const SizedBox(height: 10),
 
+                // Device Hardware Capability Check Tile
+                _SettingsTile(
+                  icon: (_capabilityResult?.isCapable ?? true)
+                      ? Icons.verified_user_rounded
+                      : Icons.warning_amber_rounded,
+                  iconColor: (_capabilityResult?.isCapable ?? true)
+                      ? const Color(0xFF2E7D32)
+                      : const Color(0xFFE65100),
+                  iconBgColor: (_capabilityResult?.isCapable ?? true)
+                      ? const Color(0xFFE8F5E9)
+                      : const Color(0xFFFFF3E0),
+                  title: 'Hardware SLM Compatibility',
+                  subtitle: _capabilityResult != null
+                      ? 'Storage: ${_capabilityResult!.freeStorageMb}MB free • RAM: ${_capabilityResult!.totalRamMb}MB • ABI: ${_capabilityResult!.cpuAbi}'
+                      : 'Checking hardware specifications...',
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: (_capabilityResult?.isCapable ?? true)
+                          ? const Color(0xFFE8F5E9)
+                          : const Color(0xFFFFEBEE),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      (_capabilityResult?.isCapable ?? true) ? 'Capable' : 'Incompatible',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: (_capabilityResult?.isCapable ?? true)
+                            ? const Color(0xFF2E7D32)
+                            : const Color(0xFFD32F2F),
+                      ),
+                    ),
+                  ),
+                  onTap: () async {
+                    final cap = await DeviceCapabilityChecker.check(forceRefresh: true);
+                    setState(() => _capabilityResult = cap);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(cap.reason),
+                          backgroundColor: cap.isCapable
+                              ? const Color(0xFF2E7D32)
+                              : const Color(0xFFD32F2F),
+                        ),
+                      );
+                    }
+                  },
+                ),
+
+                const SizedBox(height: 10),
+
                 // Model Management Tile
                 ValueListenableBuilder<EdgeAiStatus>(
                   valueListenable: OfflineEdgeAiService.instance.statusNotifier,
                   builder: (context, status, _) {
                     final isReady = status == EdgeAiStatus.ready;
                     final isDownloading = status == EdgeAiStatus.downloading;
+                    final isLoading = status == EdgeAiStatus.loading;
+                    final isCapable = _capabilityResult?.isCapable ?? true;
+
+                    if (isDownloading) {
+                      return ValueListenableBuilder<double>(
+                        valueListenable:
+                            OfflineEdgeAiService.instance.downloadProgressNotifier,
+                        builder: (context, progress, _) {
+                          final pct = (progress * 100).toInt();
+                          final mb = (progress * 352).toInt();
+                          return _SettingsTile(
+                            icon: Icons.downloading_rounded,
+                            iconColor: const Color(0xFFF57C00),
+                            iconBgColor: const Color(0xFFFFF3E0),
+                            title: 'Downloading Qwen2.5-0.5B Model',
+                            subtitle: '$pct% ($mb MB / 352 MB)',
+                            extraContent: Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: progress > 0 ? progress : null,
+                                  backgroundColor: const Color(0xFFF0F0F0),
+                                  valueColor: const AlwaysStoppedAnimation<Color>(
+                                    Color(0xFFF57C00),
+                                  ),
+                                  minHeight: 6,
+                                ),
+                              ),
+                            ),
+                            trailing: TextButton(
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: () {
+                                OfflineEdgeAiService.instance.cancelDownload();
+                              },
+                              child: const Text(
+                                'Cancel',
+                                style: TextStyle(
+                                  color: Color(0xFFD93025),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    }
+
+                    if (isReady) {
+                      return _SettingsTile(
+                        icon: Icons.check_circle_rounded,
+                        iconColor: const Color(0xFF2E7D32),
+                        iconBgColor: const Color(0xFFE8F5E9),
+                        title: 'Qwen2.5-0.5B-Instruct Model',
+                        subtitle: 'Quantized INT4 (~352MB) • Ready for offline inference',
+                        trailing: IconButton(
+                          icon: const Icon(
+                            Icons.delete_outline_rounded,
+                            color: Color(0xFFD93025),
+                            size: 22,
+                          ),
+                          tooltip: 'Delete Model to reclaim 352MB',
+                          onPressed: _handleDeleteModel,
+                        ),
+                        onTap: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Qwen2.5-0.5B INT4 is verified and ready on this device.',
+                              ),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        },
+                      );
+                    }
+
+                    if (isLoading) {
+                      return const _SettingsTile(
+                        icon: Icons.bolt_rounded,
+                        iconColor: Color(0xFFF57C00),
+                        iconBgColor: Color(0xFFFFF3E0),
+                        title: 'Qwen2.5-0.5B-Instruct Model',
+                        subtitle: 'Loading weights into RAM...',
+                        trailing: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Color(0xFFF57C00),
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    // Not downloaded state
+                    if (!isCapable) {
+                      return _SettingsTile(
+                        icon: Icons.memory_rounded,
+                        iconColor: const Color(0xFF9E9E9E),
+                        iconBgColor: const Color(0xFFEEEEEE),
+                        title: 'Qwen2.5-0.5B-Instruct Model',
+                        subtitle:
+                            'Download Disabled: ${_capabilityResult?.reason ?? 'Device not capable'}',
+                        trailing: const Icon(
+                          Icons.block_rounded,
+                          size: 20,
+                          color: Color(0xFFD32F2F),
+                        ),
+                        onTap: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                _capabilityResult?.reason ??
+                                    'This device does not meet the hardware requirements to run the offline SLM.',
+                              ),
+                              backgroundColor: const Color(0xFFD32F2F),
+                              duration: const Duration(seconds: 4),
+                            ),
+                          );
+                        },
+                      );
+                    }
 
                     return _SettingsTile(
-                      icon: Icons.memory_rounded,
-                      title: 'Qwen2.5-0.5B-Instruct Model',
-                      subtitle: isReady
-                          ? 'Quantized INT4 (Q4_K_M ~352MB) • Ready'
-                          : (isDownloading
-                              ? 'Initializing / downloading edge model...'
-                              : 'Tap to initialize on-device SLM weights'),
+                      icon: Icons.download_rounded,
+                      iconColor: const Color(0xFF1A73E8),
+                      iconBgColor: const Color(0xFFE8F1FC),
+                      title: 'Download Qwen2.5-0.5B Model',
+                      subtitle: 'INT4 Quantized (~352 MB) • Requires 500MB free storage',
+                      trailing: const Icon(
+                        Icons.download_rounded,
+                        size: 20,
+                        color: Color(0xFF1A73E8),
+                      ),
                       onTap: () async {
-                        if (isDownloading) return;
-                        if (!isReady) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Initializing Qwen2.5-0.5B on-device model bundle...'),
-                              duration: Duration(seconds: 2),
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Starting download of Qwen2.5-0.5B weights (~352 MB)...',
                             ),
-                          );
-                          await OfflineEdgeAiService.instance.downloadModel();
-                          if (mounted) setState(() {});
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Qwen2.5-0.5B INT4 is ready for zero-latency offline inference.'),
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
-                        }
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                        await OfflineEdgeAiService.instance.downloadModel();
+                        if (mounted) setState(() {});
                       },
                     );
                   },
@@ -616,12 +841,20 @@ class _SettingsTile extends StatelessWidget {
   final String title;
   final String subtitle;
   final VoidCallback? onTap;
+  final Widget? trailing;
+  final Widget? extraContent;
+  final Color? iconColor;
+  final Color? iconBgColor;
 
   const _SettingsTile({
     required this.icon,
     required this.title,
     required this.subtitle,
     this.onTap,
+    this.trailing,
+    this.extraContent,
+    this.iconColor,
+    this.iconBgColor,
   });
 
   @override
@@ -645,46 +878,59 @@ class _SettingsTile extends StatelessWidget {
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF5F5F5),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(icon, size: 20, color: const Color(0xFF555555)),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF1C1C1E),
-                        ),
+                Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: iconBgColor ?? const Color(0xFFF5F5F5),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF999999),
-                        ),
+                      child: Icon(
+                        icon,
+                        size: 20,
+                        color: iconColor ?? const Color(0xFF555555),
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF1C1C1E),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF999999),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (trailing != null)
+                      trailing!
+                    else if (onTap != null)
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        size: 20,
+                        color: Color(0xFFCCCCCC),
+                      ),
+                  ],
                 ),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  size: 20,
-                  color: Color(0xFFCCCCCC),
-                ),
+                ?extraContent,
               ],
             ),
           ),
