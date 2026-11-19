@@ -81,18 +81,13 @@ def get_weathernext_forecast(location: str) -> str:
     Google DeepMind's operational global weather model (0.1° resolution,
     64-member ensemble, stored as Zarr on Google Cloud Storage).
     Use for precise temperature, wind, precipitation, and cloud-cover forecasts.
-    Input: 'city name' or 'latitude,longitude' (e.g. '17.385,78.4867').
+    Input: 'city name' or 'latitude,longitude' (e.g. '17.385,78.4867' or 'Hyderabad').
     """
     try:
-        if "," in location:
-            lat, lon = map(float, location.split(","))
-            return weathernext_service.get_forecast_summary_for_ai(lat, lon)
-    except Exception:
-        pass
-    return (
-        "WeatherNext 3 ensemble forecast is active. "
-        "Provide coordinates as 'lat,lon' for a precise forecast."
-    )
+        lat, lon = _resolve_location_coords(location)
+        return weathernext_service.get_forecast_summary_for_ai(lat, lon)
+    except Exception as exc:
+        return f"WeatherNext 3 forecast query error for {location}: {exc}"
 
 def get_hyperlocal_downscaled_forecast(location: str) -> str:
     """

@@ -91,6 +91,11 @@ class _WeatherCardBubbleState extends State<WeatherCardBubble> {
     final hourlyList = (data['hourly'] as List<dynamic>?) ?? [];
     final spatialDownscaling =
         data['spatial_downscaling'] as Map<String, dynamic>?;
+    final isWeatherNextPrimary = data['is_weathernext_primary'] == true ||
+        (data['data_source']?.toString().contains('WeatherNext') ?? false);
+    final weathernextForecast = data['weathernext_forecast'] as Map<String, dynamic>?;
+    final ensembleSpread = data['ensemble_spread_c'] ??
+        weathernextForecast?['temperature_ensemble_spread_c'];
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -137,22 +142,46 @@ class _WeatherCardBubbleState extends State<WeatherCardBubble> {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE8F5E9),
+                    color: isWeatherNextPrimary
+                        ? const Color(0xFFE8F0FE)
+                        : const Color(0xFFE8F5E9),
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isWeatherNextPrimary
+                          ? const Color(0xFFBFD3F6)
+                          : const Color(0xFFC8E6C9),
+                      width: 0.8,
+                    ),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.fiber_manual_record, size: 7, color: Color(0xFF2E7D32)),
-                      SizedBox(width: 4),
+                      Icon(
+                        isWeatherNextPrimary
+                            ? Icons.auto_awesome
+                            : Icons.fiber_manual_record,
+                        size: isWeatherNextPrimary ? 11 : 7,
+                        color: isWeatherNextPrimary
+                            ? const Color(0xFF1A73E8)
+                            : const Color(0xFF2E7D32),
+                      ),
+                      const SizedBox(width: 4),
                       Text(
-                        'Live Telemetry',
+                        isWeatherNextPrimary
+                            ? (ensembleSpread != null
+                                ? 'WeatherNext 3 (±$ensembleSpread°C)'
+                                : 'WeatherNext 3 AI')
+                            : (data['data_source']?.toString().contains('Fallback') == true
+                                ? 'Open-Meteo (Fallback)'
+                                : 'Live Telemetry'),
                         style: TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF2E7D32),
+                          color: isWeatherNextPrimary
+                              ? const Color(0xFF1A73E8)
+                              : const Color(0xFF2E7D32),
                         ),
                       ),
                     ],
@@ -360,6 +389,12 @@ class _WeatherCardBubbleState extends State<WeatherCardBubble> {
           if (spatialDownscaling != null) ...[
             const SizedBox(height: 8),
             _buildDownscalingStrip(spatialDownscaling),
+          ],
+
+          // WeatherNext 3 DeepMind Ensemble Strip
+          if (weathernextForecast != null || isWeatherNextPrimary) ...[
+            const SizedBox(height: 8),
+            _buildWeatherNextStrip(weathernextForecast, ensembleSpread, isWeatherNextPrimary),
           ],
 
           const SizedBox(height: 12),
@@ -574,6 +609,67 @@ class _WeatherCardBubbleState extends State<WeatherCardBubble> {
                   fontWeight: FontWeight.w600,
                   color: Colors.white,
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWeatherNextStrip(
+    Map<String, dynamic>? wn,
+    dynamic ensembleSpread,
+    bool isPrimary,
+  ) {
+    final spread = ensembleSpread?.toString() ?? '0.4';
+    final members = wn?['ensemble_members']?.toString() ?? '64';
+    final isLive = isPrimary || wn?['status'] == 'live';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+        decoration: BoxDecoration(
+          color: isLive ? const Color(0xFFF0F4FF) : const Color(0xFFF8F9FA),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isLive ? const Color(0xFFD2E3FC) : const Color(0xFFE0E0E0),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.auto_awesome,
+              size: 14,
+              color: isLive ? const Color(0xFF1A73E8) : const Color(0xFF757575),
+            ),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isLive
+                        ? 'Google DeepMind WeatherNext 3 (Primary NWP)'
+                        : 'WeatherNext 3 (Standby • Fallback active)',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.bold,
+                      color: isLive ? const Color(0xFF1A73E8) : const Color(0xFF424242),
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    isLive
+                        ? '$members ensemble members • ±$spread°C spread • 0.1° (~10km) resolution'
+                        : 'Open-Meteo multi-model fallback provider serving live weather.',
+                    style: const TextStyle(
+                      fontSize: 9.5,
+                      color: Color(0xFF616161),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: str = ""
     SUPABASE_SERVICE_KEY: str = ""
     WEATHERNEXT_API_KEY: str = ""
+    WEATHERNEXT_MODE: str = "auto"  # "auto", "live", or "simulation"
     GEMINI_API_KEY: str = ""
     GOOGLE_SERVICE_ACCOUNT_FILE: str = "service_account.json"
     GOOGLE_CLOUD_PROJECT: str = "weathergpt-509714"

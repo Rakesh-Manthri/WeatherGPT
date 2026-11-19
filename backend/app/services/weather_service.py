@@ -125,7 +125,10 @@ class WeatherService:
         return "Partly Cloudy"
 
     def get_structured_weather_data(self, lat: float, lon: float, location_name: str = "") -> Dict[str, Any]:
-        """Fetch comprehensive telemetry and forecast data with resilient fallbacks and decoupled satellite telemetry."""
+        """
+        Fetch comprehensive telemetry and forecast data with WeatherNext 3 as PRIMARY engine,
+        falling back to Open-Meteo, and then to a dynamic climatological solar model.
+        """
         # 1. Resolve human-readable location name if absent
         resolved_name = location_name
         if not resolved_name or resolved_name == "Your Location":
@@ -133,139 +136,145 @@ class WeatherService:
 
         payload: Optional[Dict[str, Any]] = None
 
-        # 2. Fetch Open-Meteo telemetry with retry and generous timeout
-        params = {
-            "latitude": lat,
-            "longitude": lon,
-            "current": [
-                "temperature_2m", "relative_humidity_2m", "apparent_temperature",
-                "is_day", "precipitation", "weather_code", "surface_pressure",
-                "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m", "uv_index"
-            ],
-            "hourly": ["temperature_2m", "precipitation_probability", "weather_code", "wind_speed_10m"],
-            "daily": [
-                "weather_code", "temperature_2m_max", "temperature_2m_min",
-                "precipitation_probability_max", "sunrise", "sunset"
-            ],
-            "timezone": "auto"
-        }
+        # 2. PRIMARY: Attempt WeatherNext 3 Operational Ensemble (Google DeepMind, 0.1° resolution)
+        try:
+            payload = weathernext_service.get_primary_weather_payload(lat, lon, location_name=resolved_name)
+            if payload:
+                logger.info(f"WeatherNext 3: successfully served as PRIMARY weather provider for ({lat}, {lon})")
+        except Exception as wn_err:
+            logger.debug(f"WeatherNext 3 primary fetch skipped: {wn_err}")
 
-        data: Optional[Dict[str, Any]] = None
-        for attempt in range(2):
-            try:
-                with httpx.Client(timeout=8.0, headers=self._headers) as client:
-                    resp = client.get(self.base_url, params=params)
-                    resp.raise_for_status()
-                    data = resp.json()
-                    break
-            except Exception as exc:
-                logger.warning(f"Open-Meteo attempt {attempt + 1} failed for ({lat}, {lon}): {exc}")
+        # 3. SECONDARY FALLBACK: If WeatherNext 3 is not live (e.g. GCS standby / 403 / timeout), use Open-Meteo
+        if not payload:
+            logger.info(f"Using Open-Meteo as SECONDARY fallback provider for ({lat}, {lon})")
+            params = {
+                "latitude": lat,
+                "longitude": lon,
+                "current": [
+                    "temperature_2m", "relative_humidity_2m", "apparent_temperature",
+                    "is_day", "precipitation", "weather_code", "surface_pressure",
+                    "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m", "uv_index"
+                ],
+                "hourly": ["temperature_2m", "precipitation_probability", "weather_code", "wind_speed_10m"],
+                "daily": [
+                    "weather_code", "temperature_2m_max", "temperature_2m_min",
+                    "precipitation_probability_max", "sunrise", "sunset"
+                ],
+                "timezone": "auto"
+            }
 
-        if data:
-            try:
-                current = data.get("current") or {}
-                daily = data.get("daily") or {}
-                hourly = data.get("hourly") or {}
-
-                # Safely parse daily metrics with null-guarding
-                t_max_list = daily.get("temperature_2m_max")
-                temp_max = round(float(t_max_list[0])) if t_max_list and t_max_list[0] is not None else 31.0
-                t_min_list = daily.get("temperature_2m_min")
-                temp_min = round(float(t_min_list[0])) if t_min_list and t_min_list[0] is not None else 21.0
-                rain_ch_list = daily.get("precipitation_probability_max")
-                rain_chance = int(rain_ch_list[0]) if rain_ch_list and rain_ch_list[0] is not None else 5
-
-                # Parse hourly next 12 hours
-                hourly_list: List[Dict[str, Any]] = []
-                times = hourly.get("time") or []
-                temps = hourly.get("temperature_2m") or []
-                precips = hourly.get("precipitation_probability") or []
-                codes = hourly.get("weather_code") or []
-                winds = hourly.get("wind_speed_10m") or []
-
-                current_hour_iso = datetime.now().strftime("%Y-%m-%dT%H:00")
-                start_idx = 0
-                for i, t in enumerate(times):
-                    if t >= current_hour_iso:
-                        start_idx = i
-                        break
-
-                for i in range(start_idx, min(start_idx + 12, len(times))):
-                    t_str = times[i]
-                    hour_label = t_str.split("T")[-1] if "T" in t_str else t_str
-                    hourly_list.append({
-                        "time": "Now" if i == start_idx else hour_label,
-                        "temp": round(float(temps[i])) if i < len(temps) and temps[i] is not None else 25,
-                        "rain_chance": int(precips[i]) if i < len(precips) and precips[i] is not None else 0,
-                        "weather_code": int(codes[i]) if i < len(codes) and codes[i] is not None else 0,
-                        "wind_speed": round(float(winds[i])) if i < len(winds) and winds[i] is not None else 10,
-                    })
-
-                code = int(current.get("weather_code", 1))
-                condition = self._map_wmo_code(code)
-
-                # AQI lookup in safe isolated block
-                aqi = 55
+            data: Optional[Dict[str, Any]] = None
+            for attempt in range(2):
                 try:
-                    with httpx.Client(timeout=3.0, headers=self._headers) as client:
-                        aqi_resp = client.get(self.aqi_url, params={
-                            "latitude": lat, "longitude": lon, "current": ["us_aqi"], "timezone": "auto"
+                    with httpx.Client(timeout=8.0, headers=self._headers) as client:
+                        resp = client.get(self.base_url, params=params)
+                        resp.raise_for_status()
+                        data = resp.json()
+                        break
+                except Exception as exc:
+                    logger.warning(f"Open-Meteo attempt {attempt + 1} failed for ({lat}, {lon}): {exc}")
+
+            if data:
+                try:
+                    current = data.get("current") or {}
+                    daily = data.get("daily") or {}
+                    hourly = data.get("hourly") or {}
+
+                    t_max_list = daily.get("temperature_2m_max")
+                    temp_max = round(float(t_max_list[0])) if t_max_list and t_max_list[0] is not None else 31.0
+                    t_min_list = daily.get("temperature_2m_min")
+                    temp_min = round(float(t_min_list[0])) if t_min_list and t_min_list[0] is not None else 21.0
+                    rain_ch_list = daily.get("precipitation_probability_max")
+                    rain_chance = int(rain_ch_list[0]) if rain_ch_list and rain_ch_list[0] is not None else 5
+
+                    hourly_list: List[Dict[str, Any]] = []
+                    times = hourly.get("time") or []
+                    temps = hourly.get("temperature_2m") or []
+                    precips = hourly.get("precipitation_probability") or []
+                    codes = hourly.get("weather_code") or []
+                    winds = hourly.get("wind_speed_10m") or []
+
+                    current_hour_iso = datetime.now().strftime("%Y-%m-%dT%H:00")
+                    start_idx = 0
+                    for i, t in enumerate(times):
+                        if t >= current_hour_iso:
+                            start_idx = i
+                            break
+
+                    for i in range(start_idx, min(start_idx + 12, len(times))):
+                        t_str = times[i]
+                        hour_label = t_str.split("T")[-1] if "T" in t_str else t_str
+                        hourly_list.append({
+                            "time": "Now" if i == start_idx else hour_label,
+                            "temp": round(float(temps[i])) if i < len(temps) and temps[i] is not None else 25,
+                            "rain_chance": int(precips[i]) if i < len(precips) and precips[i] is not None else 0,
+                            "weather_code": int(codes[i]) if i < len(codes) and codes[i] is not None else 0,
+                            "wind_speed": round(float(winds[i])) if i < len(winds) and winds[i] is not None else 10,
                         })
-                        if aqi_resp.status_code == 200:
-                            aqi = aqi_resp.json().get("current", {}).get("us_aqi", 55)
-                except Exception:
-                    pass
 
-                # Decoupled satellite telemetry (isolated try/catch so GEE failure never affects core weather)
-                satellite_telemetry = None
-                if earth_engine_service.is_initialized:
-                    try:
-                        satellite_telemetry = earth_engine_service.get_satellite_precision_telemetry(lat, lon)
-                    except Exception as sat_err:
-                        logger.debug(f"Earth Engine telemetry skipped: {sat_err}")
+                    code = int(current.get("weather_code", 1))
+                    condition = self._map_wmo_code(code)
 
-                # Decoupled WeatherNext forecast (isolated try/catch so GCS failure never affects core weather)
-                weathernext_forecast = None
-                if weathernext_service.is_initialized:
-                    try:
-                        weathernext_forecast = weathernext_service.get_forecast(lat, lon)
-                    except Exception as wn_err:
-                        logger.debug(f"WeatherNext forecast skipped: {wn_err}")
+                    payload = {
+                        "location_name": resolved_name,
+                        "latitude": lat,
+                        "longitude": lon,
+                        "model_elevation_m": data.get("elevation"),
+                        "data_source": "Open-Meteo (Secondary Fallback)",
+                        "is_weathernext_primary": False,
+                        "temperature": round(float(current.get("temperature_2m", 25.0)), 1),
+                        "apparent_temperature": round(float(current.get("apparent_temperature", 26.0)), 1),
+                        "condition": condition,
+                        "weather_code": code,
+                        "humidity": current.get("relative_humidity_2m", 60),
+                        "wind_speed": round(float(current.get("wind_speed_10m", 10.0)), 1),
+                        "wind_direction": current.get("wind_direction_10m", 180),
+                        "wind_gusts": round(float(current.get("wind_gusts_10m", 12.0)), 1),
+                        "precipitation": float(current.get("precipitation", 0.0)),
+                        "pressure": round(float(current.get("surface_pressure", 1013.0)), 1),
+                        "uv_index": float(current.get("uv_index", 5.0)),
+                        "is_day": current.get("is_day", 1) == 1,
+                        "temp_max": temp_max,
+                        "temp_min": temp_min,
+                        "rain_chance": rain_chance,
+                        "hourly": hourly_list,
+                        "weathernext_forecast": weathernext_service.get_forecast(lat, lon),
+                    }
+                except Exception as parse_err:
+                    logger.error(f"Error parsing live Open-Meteo payload: {parse_err}")
 
-                payload = {
-                    "location_name": resolved_name,
-                    "latitude": lat,
-                    "longitude": lon,
-                    "model_elevation_m": data.get("elevation"),
-                    "temperature": round(float(current.get("temperature_2m", 25.0)), 1),
-                    "apparent_temperature": round(float(current.get("apparent_temperature", 26.0)), 1),
-                    "condition": condition,
-                    "weather_code": code,
-                    "humidity": current.get("relative_humidity_2m", 60),
-                    "wind_speed": round(float(current.get("wind_speed_10m", 10.0)), 1),
-                    "wind_direction": current.get("wind_direction_10m", 180),
-                    "wind_gusts": round(float(current.get("wind_gusts_10m", 12.0)), 1),
-                    "precipitation": float(current.get("precipitation", 0.0)),
-                    "pressure": round(float(current.get("surface_pressure", 1013.0)), 1),
-                    "uv_index": float(current.get("uv_index", 5.0)),
-                    "is_day": current.get("is_day", 1) == 1,
-                    "temp_max": temp_max,
-                    "temp_min": temp_min,
-                    "rain_chance": rain_chance,
-                    "aqi": aqi,
-                    "hourly": hourly_list,
-                    "satellite_telemetry": satellite_telemetry,
-                    "weathernext_forecast": weathernext_forecast,
-                }
-            except Exception as parse_err:
-                logger.error(f"Error parsing live Open-Meteo payload: {parse_err}")
-
-        # 3. If live telemetry failed completely, generate solar/latitude-dynamic approximation
+        # 4. TERTIARY FALLBACK: If both WeatherNext 3 and Open-Meteo fail completely
         if not payload:
             logger.warning(f"Using dynamic climatological approximation for ({lat}, {lon})")
             payload = self._compute_dynamic_climatological_fallback(lat, lon, location_name=resolved_name)
+            payload["data_source"] = "Climatological Solar Model (Emergency Fallback)"
+            payload["is_weathernext_primary"] = False
 
-        # 4. Apply Spatial Downscaling Engine (1km hyper-local physics)
+        # 5. Complement with AQI if not already present
+        if "aqi" not in payload or payload["aqi"] is None:
+            aqi = 55
+            try:
+                with httpx.Client(timeout=3.0, headers=self._headers) as client:
+                    aqi_resp = client.get(self.aqi_url, params={
+                        "latitude": lat, "longitude": lon, "current": ["us_aqi"], "timezone": "auto"
+                    })
+                    if aqi_resp.status_code == 200:
+                        aqi = aqi_resp.json().get("current", {}).get("us_aqi", 55)
+            except Exception:
+                pass
+            payload["aqi"] = aqi
+
+        # 6. Decoupled satellite telemetry (isolated try/catch so GEE failure never affects core weather)
+        if "satellite_telemetry" not in payload or payload["satellite_telemetry"] is None:
+            satellite_telemetry = None
+            if earth_engine_service.is_initialized:
+                try:
+                    satellite_telemetry = earth_engine_service.get_satellite_precision_telemetry(lat, lon)
+                except Exception as sat_err:
+                    logger.debug(f"Earth Engine telemetry skipped: {sat_err}")
+            payload["satellite_telemetry"] = satellite_telemetry
+
+        # 7. Apply Spatial Downscaling Engine (1km hyper-local physics)
         try:
             payload = spatial_downscaling_engine.downscale_weather_payload(payload, lat, lon)
         except Exception as ds_err:

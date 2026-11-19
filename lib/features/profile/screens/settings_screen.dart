@@ -448,6 +448,87 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                 const SizedBox(height: 24),
 
+                // Weather Providers & Intelligence Section Header
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                  child: Text(
+                    'WEATHER PROVIDERS & INTELLIGENCE',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.8,
+                      color: Color(0xFF888888),
+                    ),
+                  ),
+                ),
+
+                // Weather Provider Priority Tile
+                _SettingsTile(
+                  icon: Icons.auto_awesome,
+                  iconColor: const Color(0xFF1A73E8),
+                  iconBgColor: const Color(0xFFE8F0FE),
+                  title: 'WeatherNext 3 (Google DeepMind)',
+                  subtitle: 'Primary NWP: 64-member ensemble • Fallback: Open-Meteo',
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F0FE),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      'Primary NWP',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1A73E8),
+                      ),
+                    ),
+                  ),
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        backgroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        title: const Row(
+                          children: [
+                            Icon(Icons.auto_awesome, color: Color(0xFF1A73E8)),
+                            SizedBox(width: 8),
+                            Text('Weather Providers'),
+                          ],
+                        ),
+                        content: const Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'WeatherGPT operates a multi-tiered provider architecture:\n\n'
+                              '1. ⚡ WeatherNext 3 (Google DeepMind)\n'
+                              '   • Primary 0.1° global probabilistic model.\n'
+                              '   • 64 ensemble members with uncertainty spread.\n\n'
+                              '2. 🌐 Open-Meteo (Secondary Fallback)\n'
+                              '   • Automatic fallback if WeatherNext 3 GCS is in standby.\n\n'
+                              '3. ☀️ Climatological Solar Model (Tertiary)\n'
+                              '   • Diurnal solar/latitude physics if networks fail.\n\n'
+                              '4. 📱 Offline Edge AI (Zero Connectivity)\n'
+                              '   • On-device Qwen2.5-0.5B-Instruct SLM.',
+                              style: TextStyle(fontSize: 13, height: 1.45, color: Color(0xFF333333)),
+                            ),
+                          ],
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Close'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 24),
+
                 // Offline Edge AI Section Header
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),

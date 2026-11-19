@@ -12,6 +12,8 @@ async def get_current_weather(lat: float, lon: float):
     data = weather_service.get_structured_weather_data(lat, lon)
     return {
         "location": {"lat": lat, "lon": lon},
+        "data_source": data.get("data_source", "WeatherNext 3"),
+        "is_weathernext_primary": data.get("is_weathernext_primary", False),
         "temperature_c": data["temperature"],
         "apparent_temperature_c": data["apparent_temperature"],
         "condition": data["condition"],
@@ -19,6 +21,8 @@ async def get_current_weather(lat: float, lon: float):
         "wind_kph": data["wind_speed"],
         "rain_chance": data["rain_chance"],
         "aqi": data["aqi"],
+        "ensemble_spread_c": data.get("ensemble_spread_c"),
+        "ensemble_members": data.get("ensemble_members"),
         "spatial_downscaling": data.get("spatial_downscaling"),
         "weathernext_forecast": data.get("weathernext_forecast"),
     }
