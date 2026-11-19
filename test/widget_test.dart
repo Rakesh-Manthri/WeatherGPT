@@ -21,7 +21,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     // Verify header and hero title render
-    expect(find.text('WeatherGPT'), findsOneWidget);
+    expect(find.text('Weather GPT'), findsOneWidget);
 
     // Verify input placeholder renders
     expect(find.text('Ask weather...'), findsOneWidget);
@@ -47,6 +47,6 @@ void main() {
 
     // Verify returned to Search mode
     expect(find.text('Ask weather...'), findsOneWidget);
-    expect(find.text('WeatherGPT'), findsOneWidget);
+    expect(find.text('Weather GPT'), findsOneWidget);
   });
 }

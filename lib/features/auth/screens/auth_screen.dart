@@ -88,7 +88,7 @@ class _AuthScreenState extends State<AuthScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                _isLogin ? 'Welcome Back' : 'Join WeatherGPT',
+                _isLogin ? 'Welcome Back' : 'Join Weather GPT',
                 style: const TextStyle(
                   fontFamily: 'serif',
                   fontSize: 32,

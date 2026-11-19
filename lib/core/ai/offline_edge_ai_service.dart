@@ -696,7 +696,7 @@ class OfflineEdgeAiService {
 
     if (intent == 'greeting') {
       return '*(Offline Edge AI • On-Device Qwen2.5)*\n\n'
-          'Hello! I am WeatherGPT running offline on your device. Currently in $loc it is **$temp°C** and $cond. How can I assist you with your weather or forecast today?';
+          'Hello! I am Weather GPT running offline on your device. Currently in $loc it is **$temp°C** and $cond. How can I assist you with your weather or forecast today?';
     }
 
     if (intent == 'gratitude') {
@@ -706,7 +706,7 @@ class OfflineEdgeAiService {
 
     if (intent == 'capabilities') {
       return '*(Offline Edge AI • On-Device Qwen2.5)*\n\n'
-          'I am WeatherGPT\'s On-Device Intelligence running quantized SLM (Qwen2.5-0.5B-Instruct). Even completely without internet, I can:\n'
+          'I am Weather GPT\'s On-Device Intelligence running quantized SLM (Qwen2.5-0.5B-Instruct). Even completely without internet, I can:\n'
           '• Provide temperature, humidity, wind, and sky outlooks\n'
           '• Forecast rain probabilities and advise on umbrellas/jackets\n'
           '• Give fitness and outdoor exercise safety ratings\n'
@@ -826,7 +826,7 @@ class OfflineEdgeAiService {
 
     if (intent == 'greeting') {
       return '*(ऑफ़लाइन एज एआई • ऑन-डिवाइस Qwen2.5)*\n\n'
-          'नमस्ते! मैं WeatherGPT हूँ, जो बिना इंटरनेट के आपके डिवाइस पर चल रहा है। $loc में अभी तापमान **$temp°C** है और मौसम $cond है। मैं आज आपकी क्या सहायता कर सकता हूँ?';
+          'नमस्ते! मैं Weather GPT हूँ, जो बिना इंटरनेट के आपके डिवाइस पर चल रहा है। $loc में अभी तापमान **$temp°C** है और मौसम $cond है। मैं आज आपकी क्या सहायता कर सकता हूँ?';
     }
 
     if (intent == 'gratitude') {
@@ -836,7 +836,7 @@ class OfflineEdgeAiService {
 
     if (intent == 'capabilities') {
       return '*(ऑफ़लाइन एज एआई)*\n\n'
-          'मैं WeatherGPT का ऑन-डिवाइस इंटेलिजेंस हूँ। बिना इंटरनेट के भी मैं तापमान, बारिश की संभावना, हवा, उमस, कपड़ों की सलाह, आउटडोर फिटनेस और पंचांग आधारित कृषि सलाह दे सकता हूँ।';
+          'मैं Weather GPT का ऑन-डिवाइस इंटेलिजेंस हूँ। बिना इंटरनेट के भी मैं तापमान, बारिश की संभावना, हवा, उमस, कपड़ों की सलाह, आउटडोर फिटनेस और पंचांग आधारित कृषि सलाह दे सकता हूँ।';
     }
 
     if (intent == 'temperature') {
@@ -915,7 +915,7 @@ class OfflineEdgeAiService {
 
     if (intent == 'greeting') {
       return '*(ఆఫ్‌లైన్ ఎడ్జ్ AI • ఆన్-డివైస్ Qwen2.5)*\n\n'
-          'నమస్కారం! నేను మీ పరికరంలో ఆఫ్‌లైన్‌లో పనిచేసే WeatherGPTని. ప్రస్తుతం $loc లో ఉష్ణోగ్రత **$temp°C** మరియు $cond గా ఉంది. ఈ రోజు మీకు ఏ వాతావరణ సమాచారం కావాలి?';
+          'నమస్కారం! నేను మీ పరికరంలో ఆఫ్‌లైన్‌లో పనిచేసే Weather GPTని. ప్రస్తుతం $loc లో ఉష్ణోగ్రత **$temp°C** మరియు $cond గా ఉంది. ఈ రోజు మీకు ఏ వాతావరణ సమాచారం కావాలి?';
     }
 
     if (intent == 'gratitude') {
@@ -925,7 +925,7 @@ class OfflineEdgeAiService {
 
     if (intent == 'capabilities') {
       return '*(ఆఫ్‌లైన్ ఎడ్జ్ AI)*\n\n'
-          'నేను ఇంటర్నెట్ లేకుండా పనిచేసే WeatherGPT ఆన్-డివైస్ ఇంటెలిజెన్స్‌ని. ఉష్ణోగ్రత, వర్ష సూచన, గాలి వేగం, దుస్తుల సూచనలు, అవుట్‌డోర్ వ్యాయామం మరియు పంచాంగ వ్యవసాయ సూచనలను అందించగలను.';
+          'నేను ఇంటర్నెట్ లేకుండా పనిచేసే Weather GPT ఆన్-డివైస్ ఇంటెలిజెన్స్‌ని. ఉష్ణోగ్రత, వర్ష సూచన, గాలి వేగం, దుస్తుల సూచనలు, అవుట్‌డోర్ వ్యాయామం మరియు పంచాంగ వ్యవసాయ సూచనలను అందించగలను.';
     }
 
     if (intent == 'temperature') {
@@ -1003,7 +1003,7 @@ class OfflineEdgeAiService {
 
     if (intent == 'greeting') {
       return '*(ऑफलाइन एज एआय • ऑन-डिव्हाइस Qwen2.5)*\n\n'
-          'नमस्कार! मी WeatherGPT आहे, जे आपल्या डिव्हाइसवर ऑफलाइन कार्यरत आहे. $loc मध्ये आता तापमान **$temp°C** आणि $cond आहे. मी आपली काय मदत करू शकतो?';
+          'नमस्कार! मी Weather GPT आहे, जे आपल्या डिव्हाइसवर ऑफलाइन कार्यरत आहे. $loc मध्ये आता तापमान **$temp°C** आणि $cond आहे. मी आपली काय मदत करू शकतो?';
     }
 
     if (intent == 'gratitude') {

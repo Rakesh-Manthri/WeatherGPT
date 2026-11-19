@@ -15,18 +15,10 @@ class NewsScreen extends StatefulWidget {
 class _NewsScreenState extends State<NewsScreen> {
   final WeatherApiClient _apiClient = WeatherApiClient();
   String _selectedCategory = 'ALL';
-  String _selectedSource = 'ALL';
   bool _isLoading = true;
   bool _isOfflineCache = false;
   List<Map<String, dynamic>> _articles = [];
   String? _errorMessage;
-
-  static const List<Map<String, String>> _sources = [
-    {'id': 'ALL', 'label': 'All Sources', 'icon': '🌐'},
-    {'id': 'GOVERNMENT', 'label': 'Govt (IMD/NDMA)', 'icon': '🏛️'},
-    {'id': 'GLOBAL', 'label': 'Global (BBC/Reuters)', 'icon': '🌍'},
-    {'id': 'SCIENCE', 'label': 'Science (ISRO/ICAR)', 'icon': '🔬'},
-  ];
 
   static const List<Map<String, String>> _categories = [
     {'id': 'ALL', 'label': 'All Updates', 'icon': '📰'},
@@ -43,7 +35,7 @@ class _NewsScreenState extends State<NewsScreen> {
     _loadNews();
   }
 
-  String _cacheKey(String source, String category) => 'cached_news_${source}_$category';
+  String _cacheKey(String category) => 'cached_news_$category';
 
   Future<void> _loadNews() async {
     setState(() {
@@ -55,14 +47,14 @@ class _NewsScreenState extends State<NewsScreen> {
     try {
       final items = await _apiClient.getWeatherNews(
         category: _selectedCategory,
-        source: _selectedSource,
+        source: 'ALL',
         limit: 20,
       );
 
       // Cache locally in SharedPreferences for offline reading
       try {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_cacheKey(_selectedSource, _selectedCategory), jsonEncode(items));
+        await prefs.setString(_cacheKey(_selectedCategory), jsonEncode(items));
       } catch (_) {}
 
       if (mounted) {
@@ -76,7 +68,7 @@ class _NewsScreenState extends State<NewsScreen> {
       List<Map<String, dynamic>> fallback = [];
       try {
         final prefs = await SharedPreferences.getInstance();
-        final cachedJson = prefs.getString(_cacheKey(_selectedSource, _selectedCategory));
+        final cachedJson = prefs.getString(_cacheKey(_selectedCategory));
         if (cachedJson != null && cachedJson.isNotEmpty) {
           final decoded = jsonDecode(cachedJson) as List<dynamic>;
           fallback = decoded.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList();
@@ -101,14 +93,6 @@ class _NewsScreenState extends State<NewsScreen> {
     if (_selectedCategory == categoryId) return;
     setState(() {
       _selectedCategory = categoryId;
-    });
-    _loadNews();
-  }
-
-  void _onSourceSelected(String sourceId) {
-    if (_selectedSource == sourceId) return;
-    setState(() {
-      _selectedSource = sourceId;
     });
     _loadNews();
   }
@@ -178,62 +162,6 @@ class _NewsScreenState extends State<NewsScreen> {
                     onPressed: _loadNews,
                   ),
                 ],
-              ),
-            ),
-
-            // Source Selector Bar (Multi-Source Expansion: Govt, Global Wire, Science)
-            Container(
-              height: 38,
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                scrollDirection: Axis.horizontal,
-                itemCount: _sources.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
-                itemBuilder: (context, index) {
-                  final src = _sources[index];
-                  final isSelected = src['id'] == _selectedSource;
-
-                  return GestureDetector(
-                    onTap: () => _onSourceSelected(src['id']!),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: isSelected ? const Color(0xFF1E3A8A) : Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isSelected
-                              ? const Color(0xFF1E3A8A)
-                              : Colors.black.withValues(alpha: 0.08),
-                        ),
-                        boxShadow: isSelected
-                            ? [
-                                BoxShadow(
-                                  color: const Color(0xFF1E3A8A).withValues(alpha: 0.2),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ]
-                            : null,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(src['icon']!, style: const TextStyle(fontSize: 12)),
-                          const SizedBox(width: 6),
-                          Text(
-                            src['label']!,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                              color: isSelected ? Colors.white : const Color(0xFF4B5563),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
               ),
             ),
 
@@ -412,27 +340,11 @@ class _WeatherNewsCard extends StatelessWidget {
     final title = article['title']?.toString() ?? 'Weather Bulletin';
     final summary = article['summary']?.toString() ?? '';
     final source = article['source']?.toString() ?? 'Official Meteorological Bureau';
-    final sourceType = (article['source_type']?.toString() ?? 'GOVERNMENT').toUpperCase();
     final severity = article['severity']?.toString() ?? 'INFO';
     final region = article['region']?.toString() ?? 'India';
     final citations = (article['citations'] as List?)?.map((e) => e.toString()).toList() ?? [];
     final severityColor = _getSeverityColor(severity);
     final timeAgo = _formatTimeAgo(article['published_at']);
-
-    // Source Type Badge Details
-    String sourceBadgeLabel = '🏛️ Govt';
-    Color sourceBadgeBg = const Color(0xFFEFF6FF);
-    Color sourceBadgeColor = const Color(0xFF1D4ED8);
-
-    if (sourceType == 'GLOBAL') {
-      sourceBadgeLabel = '🌍 Global';
-      sourceBadgeBg = const Color(0xFFF5F3FF);
-      sourceBadgeColor = const Color(0xFF6D28D9);
-    } else if (sourceType == 'SCIENCE') {
-      sourceBadgeLabel = '🔬 Science';
-      sourceBadgeBg = const Color(0xFFECFDF5);
-      sourceBadgeColor = const Color(0xFF047857);
-    }
 
     return Container(
       decoration: BoxDecoration(
@@ -450,7 +362,7 @@ class _WeatherNewsCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Tag & Time Header with Multi-Source Badge
+          // Tag & Time Header
           Row(
             children: [
               // Severity pill
@@ -467,24 +379,6 @@ class _WeatherNewsCard extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                     color: severityColor,
                     letterSpacing: 0.5,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-
-              // Source type badge (Govt / Global / Science)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
-                decoration: BoxDecoration(
-                  color: sourceBadgeBg,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  sourceBadgeLabel,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: sourceBadgeColor,
                   ),
                 ),
               ),

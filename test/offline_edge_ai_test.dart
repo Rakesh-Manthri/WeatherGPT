@@ -268,7 +268,7 @@ void main() {
 
       // 1. Greeting query -> tailored conversational greeting, weatherData is null
       final greetingRes = await edge.processOfflineQuery('Hello, how are you?');
-      expect(greetingRes.text.contains('Hello! I am WeatherGPT'), isTrue);
+      expect(greetingRes.text.contains('Hello! I am Weather GPT'), isTrue);
       expect(greetingRes.weatherData, isNull);
       expect(greetingRes.isGroundedOnCache, isFalse);
 

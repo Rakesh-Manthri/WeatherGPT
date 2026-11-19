@@ -57,7 +57,7 @@ class WeatherGptApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'WeatherGPT',
+      title: 'Weather GPT',
       scrollBehavior: AppScrollBehavior(),
       theme: ThemeData(
         scaffoldBackgroundColor: const Color(0xFFF7F7F7),
@@ -259,7 +259,7 @@ class _WeatherGptScreenState extends State<WeatherGptScreen> {
                             ],
                           )
                         : const Text(
-                            'WeatherGPT',
+                            'Weather GPT',
                             key: ValueKey('weathergpt_hero'),
                             style: TextStyle(
                               fontFamily: 'serif',
