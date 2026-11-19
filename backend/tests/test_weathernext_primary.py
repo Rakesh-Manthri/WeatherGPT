@@ -74,6 +74,13 @@ class TestWeatherNextPrimaryImplementation(unittest.TestCase):
         self.assertIsInstance(res, str)
         self.assertIn("WeatherNext 3", res)
 
+    def test_weathernext_diagnose(self):
+        diag = self.wn_service.diagnose()
+        self.assertIn("mode", diag)
+        self.assertIn("target_bucket", diag)
+        self.assertIn("credentials_initialized", diag)
+        self.assertIn("status", diag)
+
 
 if __name__ == "__main__":
     unittest.main()

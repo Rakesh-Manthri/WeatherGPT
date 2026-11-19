@@ -92,6 +92,12 @@ async def get_forecast(
     }
 
 
+@router.get("/weathernext/diagnose")
+async def diagnose_weathernext():
+    """Diagnostic probe checking GCS access, service account permissions, and operational mode."""
+    return weathernext_service.diagnose()
+
+
 @router.get("/weathernext")
 async def get_weathernext_forecast(
     lat: float = Query(ge=-90, le=90),

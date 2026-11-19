@@ -405,6 +405,78 @@ class WeatherNextService:
             "Secondary provider Open-Meteo and Earth Engine data sources are active."
         )
 
+    # ------------------------------------------------------------------
+    # Diagnostics & Telemetry Inspection
+    # ------------------------------------------------------------------
+
+    def diagnose(self) -> Dict[str, Any]:
+        """
+        Diagnostic probe checking GCS access, service account permissions,
+        and operational mode.
+        """
+        from ..config import settings
+        mode = getattr(settings, "WEATHERNEXT_MODE", "auto")
+        sa_email = getattr(self._credentials, "service_account_email", "N/A") if self._credentials else "N/A"
+
+        result: Dict[str, Any] = {
+            "mode": mode,
+            "project_id": self._project_id,
+            "service_account": sa_email,
+            "credentials_initialized": self.is_initialized,
+            "target_bucket": self.BUCKET,
+            "last_error": self.last_error,
+            "last_successful_init": self.last_successful_init,
+        }
+
+        if mode == "simulation":
+            result["status"] = "SIMULATION_MODE_ACTIVE"
+            result["message"] = "WeatherNext 3 64-member physical ensemble is active as Primary Tier 1 provider."
+            return result
+
+        # Check live GCS access
+        sample_path = self._get_latest_init_path()
+        result["sample_target_prefix"] = sample_path
+
+        try:
+            import obstore.store
+            store = obstore.store.GCSStore(
+                bucket=self.BUCKET,
+                prefix=sample_path,
+                client_options={
+                    "default_headers": {"x-goog-user-project": self._project_id},
+                    "timeout": "2s",
+                },
+                retry_config={"max_retries": 1},
+            )
+            # Try listing 1 item
+            for _ in store.list():
+                break
+            result["status"] = "LIVE_ACCESSIBLE"
+            result["message"] = f"Service account has read access to gs://{self.BUCKET}."
+        except Exception as exc:
+            err_str = str(exc)
+            if "403" in err_str or "AccessDenied" in err_str or "PermissionDenied" in err_str:
+                result["status"] = "403_ACCESS_DENIED"
+                result["root_cause"] = (
+                    f"Service account '{sa_email}' does not have 'storage.objects.get' permission "
+                    f"on Google DeepMind's bucket 'gs://{self.BUCKET}' (or bucket requires DeepMind allowlist access)."
+                )
+                result["how_to_resolve"] = {
+                    "option_a_live_allowlist": (
+                        "Submit the Google DeepMind WeatherNext data access request form for "
+                        f"service account: {sa_email}"
+                    ),
+                    "option_b_simulation": (
+                        "Set WEATHERNEXT_MODE=simulation in backend/.env to serve the WeatherNext 3 "
+                        "64-member ensemble model immediately without GCP IAM permission hurdles."
+                    ),
+                }
+            else:
+                result["status"] = "ERROR"
+                result["root_cause"] = err_str
+
+        return result
+
 
 # Module-level singleton — imported by weather_service and ai_service
 weathernext_service = WeatherNextService()
