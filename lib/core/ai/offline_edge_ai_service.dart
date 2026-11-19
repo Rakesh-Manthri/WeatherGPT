@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:path_provider/path_provider.dart';
 import '../cache/offline_weather_cache.dart';
+import '../emergency/emergency_contacts.dart';
 import '../localization/locale_service.dart';
 import '../voice/speech_sanitizer.dart';
 
@@ -230,6 +231,9 @@ class OfflineEdgeAiService {
     }
   }
 
+  /// Verified Emergency and Disaster Helplines available completely offline
+  List<EmergencyContact> get emergencyHelplines => EmergencyContacts.defaultHelplines;
+
   /// Full Offline Edge AI Inference: parses user query, looks up local cache,
   /// and runs grounded on-device synthesis in the user's requested language.
   Future<EdgeInferenceResult> processOfflineQuery(
@@ -248,8 +252,28 @@ class OfflineEdgeAiService {
     statusNotifier.value = EdgeAiStatus.processing;
 
     try {
-      final activeLang = LocaleService.resolveLanguage(language) ??
-          LocaleService.currentLanguage;
+      AppLanguage? resolvedLang = LocaleService.resolveLanguage(language);
+      if (resolvedLang == null) {
+        // Auto-detect vernacular language script from query text when language is not explicitly passed
+        final q = userQuery.toLowerCase();
+        if (RegExp(r'[\u0C00-\u0C7F]').hasMatch(userQuery)) {
+          resolvedLang = LocaleService.resolveLanguage('te');
+        } else if (RegExp(r'[\u0900-\u097F]').hasMatch(userQuery)) {
+          final isMarathi = q.contains('आहे') ||
+              q.contains('हवामान') ||
+              q.contains('पाऊस') ||
+              q.contains('कसा') ||
+              q.contains('कशी') ||
+              q.contains('कसे') ||
+              q.contains('नका') ||
+              q.contains('करा') ||
+              q.contains('पूर') ||
+              q.contains('मदत') ||
+              q.contains('आपत्कालीन');
+          resolvedLang = LocaleService.resolveLanguage(isMarathi ? 'mr' : 'hi');
+        }
+      }
+      final activeLang = resolvedLang ?? LocaleService.currentLanguage;
 
       final cachedTelemetry = await OfflineWeatherCache.instance.getCachedTelemetry();
       final cacheAge = await OfflineWeatherCache.instance.getCacheAgeString();
@@ -269,17 +293,23 @@ class OfflineEdgeAiService {
 
       final cleanTts = SpeechSanitizer.cleanForSpeech(reply, language: activeLang);
 
-      final isSmallNonWeatherQuery = intent == 'greeting' ||
-          intent == 'gratitude' ||
-          intent == 'capabilities' ||
-          intent == 'smalltalk';
+      // Only display the weather card bubble when the query explicitly asks for
+      // meteorological telemetry (weather, temperature, rain, AQI, wind, humidity, sky conditions).
+      // Emergency, smalltalk, clothing, farming, and fitness queries do not clutter with the card.
+      final isExplicitWeatherQuery = intent == 'current_weather' ||
+          intent == 'temperature' ||
+          intent == 'rain_forecast' ||
+          intent == 'air_quality' ||
+          intent == 'wind' ||
+          intent == 'humidity' ||
+          intent == 'sky_condition';
 
       return EdgeInferenceResult(
         text: reply,
         ttsText: cleanTts,
-        weatherData: isSmallNonWeatherQuery ? null : cachedTelemetry,
+        weatherData: isExplicitWeatherQuery ? cachedTelemetry : null,
         detectedLanguage: activeLang.englishName,
-        isGroundedOnCache: hasCache && !isSmallNonWeatherQuery,
+        isGroundedOnCache: hasCache && isExplicitWeatherQuery,
         cacheAge: cacheAge,
       );
     } finally {
@@ -291,10 +321,51 @@ class OfflineEdgeAiService {
   }
 
   /// Semantic Intent Classifier matching Qwen2.5-0.5B ChatML extraction
-  /// Semantic Intent Classifier matching Qwen2.5-0.5B ChatML extraction
   String _extractIntent(String query) {
     final q = query.trim().toLowerCase();
     final clean = q.replaceAll(RegExp(r'[^\w\s]'), '');
+
+    // 0. Emergency & Critical Life-Safety (TOP PRIORITY)
+    final emergencyKeywords = [
+      'emergency', 'sos', 'help me', 'danger', 'flood', 'flooding', 'cyclone',
+      'hurricane', 'tornado', 'landslide', 'earthquake', 'lightning', 'tsunami',
+      'trapped', 'submerged', 'rescue', 'injured', 'casualty', 'ambulance', 'ndrf',
+      'disaster', 'hazard', 'fire', 'electric shock', 'power line', 'live wire',
+      'drowning', 'water entering', 'collapse', 'distress', 'helpline', 'emergency number',
+      'emergency contact', 'urgent help'
+    ];
+    final isEmergency = emergencyKeywords.any((k) => q.contains(k) || clean.contains(k)) ||
+        q.contains('आपदा') ||
+        q.contains('आपातकाल') ||
+        q.contains('संकट') ||
+        q.contains('मदद') ||
+        q.contains('सहायता') ||
+        q.contains('बाढ़') ||
+        q.contains('तूफान') ||
+        q.contains('चक्रवात') ||
+        q.contains('बिजली गिर') ||
+        q.contains('भूकंप') ||
+        q.contains('भूस्खलन') ||
+        q.contains('आग लग') ||
+        q.contains('फंसे') ||
+        q.contains('అత్యవసర') ||
+        q.contains('సహాయం') ||
+        q.contains('రక్షించండి') ||
+        q.contains('వరద') ||
+        q.contains('తుఫాన్') ||
+        q.contains('పిడుగు') ||
+        q.contains('భూకంపం') ||
+        q.contains('చిక్కుకున్న') ||
+        q.contains('గాయపడ్డ') ||
+        q.contains('आपत्कालीन') ||
+        q.contains('मदत') ||
+        q.contains('पूर') ||
+        q.contains('चक्रीवादळ') ||
+        q.contains('वीज पड') ||
+        q.contains('अडकले');
+    if (isEmergency) {
+      return 'emergency';
+    }
 
     // 1. Gratitude
     if (clean == 'thanks' ||
@@ -604,7 +675,24 @@ class OfflineEdgeAiService {
     required dynamic microZone,
     required String cacheAge,
   }) {
-    final prefix = '*(Offline Edge AI • Cached $cacheAge)*\n\n';
+    final prefix = '*(Offline Edge AI • Loaded from cache data - $cacheAge)*\n\n';
+
+    if (intent == 'emergency') {
+      return '$prefix🚨 **EMERGENCY ASSISTANCE & DISASTER HELPLINES**\n\n'
+          '**Immediate Life-Safety Protocols:**\n'
+          '• **Floods & Rising Water:** Move immediately to higher elevation or upper floors. Never attempt to walk, swim, or drive through flowing water. Turn off the main electrical breaker and LPG gas cylinder valves immediately.\n'
+          '• **Cyclone & Severe Storms:** Stay inside an interior room away from exterior glass windows, doors, and loose tin roofs. Do not venture outdoors during temporary lulls.\n'
+          '• **Lightning & Thunderstorms:** Remain inside a fully enclosed structure. Avoid open fields, tall trees, water bodies, and metallic fixtures.\n'
+          '• **Earthquake:** Drop, Cover, and Hold on under sturdy furniture until shaking stops completely.\n\n'
+          '📞 **Verified Emergency Numbers (Works Offline / Any Mobile Network):**\n'
+          '• 🚨 **National All-in-One Emergency:** **112** *(Police, Fire, Ambulance)*\n'
+          '• 🌊 **NDRF Disaster Rescue Force:** **1078**\n'
+          '• 🛡️ **State Disaster Management:** **1070** / **1077** *(District Collectorate)*\n'
+          '• 🏥 **Medical Ambulance Emergency:** **108**\n'
+          '• 🚒 **Fire & Rescue Service:** **101**\n'
+          '• 🌪️ **IMD Weather & Cyclone Disaster Support:** **1800-180-1717**\n\n'
+          'Stay calm, conserve your mobile battery, and signal rescuers with a flashlight, whistle, or bright cloth.';
+    }
 
     if (intent == 'greeting') {
       return '*(Offline Edge AI • On-Device Qwen2.5)*\n\n'
@@ -718,7 +806,23 @@ class OfflineEdgeAiService {
     required dynamic tithi,
     required String cacheAge,
   }) {
-    final prefix = '*(ऑफ़लाइन एज एआई • $cacheAge का डेटा)*\n\n';
+    final prefix = '*(ऑफ़लाइन एज एआई • कैश डेटा से लोड किया गया - $cacheAge)*\n\n';
+
+    if (intent == 'emergency') {
+      return '$prefix🚨 **आपातकालीन सहायता एवं आपदा हेल्पलाइन**\n\n'
+          '**तत्काल जीवन-रक्षा निर्देश:**\n'
+          '• **बाढ़ व जलभराव:** तुरंत ऊंचे स्थानों या ऊपरी मंजिल पर जाएं। बहते पानी में चलने या गाड़ी चलाने की कोशिश बिल्कुल न करें। घर का मुख्य बिजली स्विच व गैस सिलेंडर बंद करें।\n'
+          '• **चक्रवात व आंधी-तूफान:** खिड़कियों और दरवाजों से दूर किसी आंतरिक कमरे में रहें। गिरे हुए बिजली के खंभों व तारों से दूर रहें।\n'
+          '• **आकाशीय बिजली:** पक्के भवन के अंदर रहें। खुले मैदान, ऊंचे पेड़ों व पानी के स्रोतों से तुरंत दूर हटें।\n\n'
+          '📞 **आपातकालीन हेल्पलाइन नंबर (किसी भी नेटवर्क पर उपलब्ध):**\n'
+          '• 🚨 **राष्ट्रीय आपातकालीन नंबर:** **112** *(पुलिस, फायर, एम्बुलेंस)*\n'
+          '• 🌊 **एनडीआरएफ (NDRF) आपदा राहत:** **1078**\n'
+          '• 🛡️ **राज्य / जिला आपदा नियंत्रण कक्ष:** **1070** / **1077**\n'
+          '• 🏥 **एम्बुलेंस (चिकित्सा आपातकाल):** **108**\n'
+          '• 🚒 **अग्निशमन दल (फायर):** **101**\n'
+          '• 🌪️ **मौसम व चक्रवात आपदा सहायता:** **1800-180-1717**\n\n'
+          'धैर्य रखें, मोबाइल बैटरी बचाएं और टॉर्च या सीटी की मदद से राहत दलों को अपना स्थान बताएं।';
+    }
 
     if (intent == 'greeting') {
       return '*(ऑफ़लाइन एज एआई • ऑन-डिवाइस Qwen2.5)*\n\n'
@@ -791,7 +895,23 @@ class OfflineEdgeAiService {
     required dynamic tithi,
     required String cacheAge,
   }) {
-    final prefix = '*(ఆఫ్‌లైన్ ఎడ్జ్ AI • $cacheAge డేటా)*\n\n';
+    final prefix = '*(ఆఫ్‌లైన్ ఎడ్జ్ AI • క్యాష్ డేటా నుండి లోడ్ చేయబడింది - $cacheAge)*\n\n';
+
+    if (intent == 'emergency') {
+      return '$prefix🚨 **అత్యవసర సహాయం & విపత్తు హెల్ప్‌లైన్లు**\n\n'
+          '**తక్షణ ప్రాణరక్షణ సూచనలు:**\n'
+          '• **వరదలు / నీరు చేరడం:** వెంటనే ఎత్తైన ప్రదేశాలకు లేదా పై అంతస్తులకు వెళ్లండి. ప్రవహించే నీటిలో నడవడానికి లేదా వాహనాలు నడపడానికి ప్రయత్నించవద్దు. మెయిన్ స్విచ్, గ్యాస్ సిలిండర్ ఆఫ్ చేయండి.\n'
+          '• **తుఫాను / ఈదురుగాలులు:** కిటికీలు మరియు తలుపులకు దూరంగా సురక్షితమైన గదిలో ఉండండి. విరిగిన విద్యుత్ స్తంభాలు, తీగలకు దూరంగా ఉండండి.\n'
+          '• **పిడుగుపాటు:** పక్కా భవనంలో మాత్రమే ఆశ్రయం పొందండి. చెట్ల కింద, బహిరంగ ప్రదేశాలలో ఉండవద్దు.\n\n'
+          '📞 **అత్యవసర ఫోన్ నంబర్లు (ఏ నెట్‌వర్క్ నుండైనా పనిచేస్తాయి):**\n'
+          '• 🚨 **జాతీయ అత్యవసర హెల్ప్‌లైన్:** **112** *(పోలీస్, ఫైర్, అంబులెన్స్)*\n'
+          '• 🌊 **ఎన్‌డిఆర్‌ఎఫ్ (NDRF) విపత్తు రక్షణ:** **1078**\n'
+          '• 🛡️ **రాష్ట్ర / జిల్లా విపత్తు నియంత్రణ:** **1070** / **1077**\n'
+          '• 🏥 **అంబులెన్స్ (వైద్య అత్యవసరం):** **108**\n'
+          '• 🚒 **ఫైర్ & రెస్క్యూ:** **101**\n'
+          '• 🌪️ **వాతావరణ విపత్తు సహాయం:** **1800-180-1717**\n\n'
+          'ధైర్యంగా ఉండండి, ఫోన్ బ్యాటరీని ఆదా చేసుకోండి, టార్చ్ లైట్ లేదా విజిల్ ద్వారా సహాయక బృందాలకు మీ ఆచూకీ తెలియజేయండి.';
+    }
 
     if (intent == 'greeting') {
       return '*(ఆఫ్‌లైన్ ఎడ్జ్ AI • ఆన్-డివైస్ Qwen2.5)*\n\n'
@@ -864,7 +984,22 @@ class OfflineEdgeAiService {
     required dynamic tithi,
     required String cacheAge,
   }) {
-    final prefix = '*(ऑफलाइन एज एआय • $cacheAge चा डेटा)*\n\n';
+    final prefix = '*(ऑफलाइन एज एआय • कॅश डेटामधून लोड केले - $cacheAge)*\n\n';
+
+    if (intent == 'emergency') {
+      return '$prefix🚨 **आपत्कालीन मदत आणि आपत्ती निवारण हेल्पलाइन**\n\n'
+          '**तातडीच्या जीवन-सुरक्षा सूचना:**\n'
+          '• **पूर व पाणी साचणे:** तातडीने उंच ठिकाणी किंवा इमारतीच्या वरच्या मजल्यावर जा. वाहत्या पाण्यातून चालण्याचा वा गाडी चालवण्याचा प्रयत्न करू नका. घरातील मुख्य वीज पुरवठा व गॅस बंद करा.\n'
+          '• **वादळ व चक्रीवादळ:** खिडक्यांपासून दूर घरातील सुरक्षित खोलीत थांबा. पडलेल्या विजेच्या तारांना स्पर्श करू नका.\n'
+          '• **वीज कोसळणे:** पक्क्या इमारतीत आसरा घ्या. उघड्या मैदानात किंवा झाडाखाली उभे राहू नका.\n\n'
+          '📞 **तातडीचे संपर्क क्रमांक (कोणत्याही नेटवर्कवरून कार्यरत):**\n'
+          '• 🚨 **राष्ट्रीय आपत्कालीन क्रमांक:** **112** *(पोलीस, अग्निशामक, रुग्णवाहिका)*\n'
+          '• 🌊 **एनडीआरएफ (NDRF) आपत्ती मदत:** **1078**\n'
+          '• 🛡️ **राज्य / जिल्हा आपत्ती नियंत्रण कक्ष:** **1070** / **1077**\n'
+          '• 🏥 **रुग्णवाहिका (वैद्यकीय मदत):** **108**\n'
+          '• 🚒 **अग्निशामक दल:** **101**\n\n'
+          'शांत राहा, मोबाईल बॅटरी वाचवा आणि मदत पथकांशी संपर्क साधा.';
+    }
 
     if (intent == 'greeting') {
       return '*(ऑफलाइन एज एआय • ऑन-डिव्हाइस Qwen2.5)*\n\n'

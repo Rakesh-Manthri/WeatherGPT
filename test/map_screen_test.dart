@@ -24,7 +24,7 @@ void main() {
     },
   };
 
-  testWidgets('MapScreen renders telemetry, GIS overlays, and controls', (tester) async {
+  testWidgets('MapScreen renders clean full-screen map with top navigation controls', (tester) async {
     bool backToChatCalled = false;
 
     await tester.pumpWidget(
@@ -44,35 +44,18 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    // Verify location title and coordinates
-    expect(find.text('Visakhapatnam Coast'), findsOneWidget);
-    expect(find.textContaining('17.6868°N, 83.2185°E'), findsOneWidget);
-    expect(find.textContaining('Bay of Bengal Coastal Buffer'), findsOneWidget);
+    // Verify MapScreen rendered cleanly
+    expect(find.byType(MapScreen), findsOneWidget);
 
-    // Verify metrics
-    expect(find.text('31°C'), findsWidgets);
-    expect(find.text('85%'), findsOneWidget);
-    expect(find.text('42 km/h'), findsOneWidget);
+    // Verify overlays, radar, layer pills, and floating action buttons were removed per clean map requirement
+    expect(find.text('Radar'), findsNothing);
+    expect(find.text('1km UHI'), findsNothing);
+    expect(find.byIcon(Icons.add_rounded), findsNothing);
+    expect(find.byIcon(Icons.my_location_rounded), findsNothing);
 
-    // Verify floating action buttons
-    expect(find.byIcon(Icons.add_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.remove_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.my_location_rounded), findsOneWidget);
-
-    // Verify layer pills
-    expect(find.text('Radar'), findsOneWidget);
-    expect(find.text('Wind'), findsWidgets);
-    expect(find.text('1km UHI'), findsOneWidget);
-
-    // Tap Wind layer pill
-    await tester.tap(find.text('Wind').first);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    // Tap 1km UHI layer pill
-    await tester.tap(find.text('1km UHI'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    // Verify top navigation controls exist
+    expect(find.byIcon(Icons.arrow_back_ios_new_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.article_outlined), findsOneWidget);
 
     // Tap Chat toggle option (index 0)
     final chatToggleOption = find.byIcon(Icons.chat_bubble_outline_rounded);
@@ -95,8 +78,8 @@ void main() {
 
     // Verifies it rendered cleanly without crashing
     expect(find.byType(MapScreen), findsOneWidget);
-    expect(find.text('Radar'), findsOneWidget);
-    expect(find.text('Wind'), findsWidgets);
-    expect(find.text('1km UHI'), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_back_ios_new_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.article_outlined), findsOneWidget);
+    expect(find.text('Radar'), findsNothing);
   });
 }

@@ -41,10 +41,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    // Verify MapScreen is now active with GIS overlays
+    // Verify MapScreen is now active with clean vector map
     expect(find.byType(MapScreen), findsOneWidget);
-    expect(find.text('Radar'), findsOneWidget);
-    expect(find.text('1km UHI'), findsOneWidget);
 
     // Tap Chat toggle option in MapScreen to switch back
     final chatToggleOption = find.byIcon(Icons.chat_bubble_outline_rounded).last;

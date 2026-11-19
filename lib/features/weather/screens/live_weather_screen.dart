@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../../core/location/location_service.dart';
+import '../../../core/cache/offline_weather_cache.dart';
 
 /// Live Weather Data Model
 class LiveWeatherData {
@@ -316,6 +317,7 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
   LiveWeatherData? _weatherData;
   bool _is5DayExpanded = false;
   bool? _overrideDayMode;
+  bool _isLoadedFromCache = false;
 
   late double _currentLat;
   late double _currentLon;
@@ -695,6 +697,20 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
         });
       }
     } catch (e) {
+      // Gracefully attempt to load from local offline telemetry cache
+      try {
+        final cached = await OfflineWeatherCache.instance.getCachedTelemetry();
+        if (cached != null && cached.isNotEmpty && mounted) {
+          _parseFromExternalMap(cached);
+          setState(() {
+            _isLoadedFromCache = true;
+            _isLoading = false;
+            _errorMessage = null;
+          });
+          return;
+        }
+      } catch (_) {}
+
       if (mounted) {
         setState(() {
           _errorMessage = 'Failed to load live weather. Please check connection.';
@@ -830,6 +846,37 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
                                 physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
                                 children: [
+                                  if (_isLoadedFromCache)
+                                    Center(
+                                      child: Container(
+                                        margin: const EdgeInsets.only(bottom: 12),
+                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(alpha: 0.22),
+                                          borderRadius: BorderRadius.circular(16),
+                                          border: Border.all(
+                                            color: Colors.white.withValues(alpha: 0.35),
+                                            width: 0.8,
+                                          ),
+                                        ),
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.cloud_done_outlined, size: 14, color: Colors.white),
+                                            SizedBox(width: 6),
+                                            Text(
+                                              'Loaded from cache data',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+
                                   // 1. Hero Temperature Section
                                   _buildHeroSection(_weatherData!),
                                   const SizedBox(height: 32),

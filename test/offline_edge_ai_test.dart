@@ -5,6 +5,7 @@ import 'package:weather_gpt/core/ai/device_capability_checker.dart';
 import 'package:weather_gpt/core/ai/offline_edge_ai_service.dart';
 import 'package:weather_gpt/core/api/weather_api_client.dart';
 import 'package:weather_gpt/core/cache/offline_weather_cache.dart';
+import 'package:weather_gpt/core/emergency/emergency_contacts.dart';
 import 'package:weather_gpt/features/chat/models/chat_message.dart';
 import 'package:weather_gpt/features/chat/widgets/message_bubble.dart';
 
@@ -410,6 +411,86 @@ void main() {
       await tester.tap(find.text('Listen'));
       await tester.pump();
       expect(speakTapped, isTrue);
+    });
+  });
+
+  group('Emergency Helplines & Critical SLM Handling Tests', () {
+    test('default emergency helplines are registered and available offline', () {
+      final helplines = EmergencyContacts.defaultHelplines;
+      expect(helplines.isNotEmpty, isTrue);
+      expect(helplines.any((c) => c.number == '112'), isTrue);
+      expect(helplines.any((c) => c.number == '1078'), isTrue); // NDRF
+      expect(helplines.any((c) => c.number == '1070'), isTrue); // State Disaster
+      expect(helplines.any((c) => c.number == '108'), isTrue); // Ambulance
+      expect(helplines.any((c) => c.number == '101'), isTrue); // Fire
+    });
+
+    test('SLM answers emergency and critical disaster questions with safety protocols and emergency numbers', () async {
+      final service = OfflineEdgeAiService.instance;
+      await OfflineWeatherCache.instance.saveTelemetry({
+        'location_name': 'Hyderabad',
+        'latitude': 17.3850,
+        'longitude': 78.4867,
+        'temperature': 28.0,
+        'condition': 'Heavy Rain',
+        'rain_chance': 90,
+      });
+
+      // 1. English emergency
+      final resEn = await service.processOfflineQuery('Flood emergency! Water entering house, please help!');
+      expect(resEn.text, contains('EMERGENCY ASSISTANCE & DISASTER HELPLINES'));
+      expect(resEn.text, contains('112'));
+      expect(resEn.text, contains('1078'));
+      // Crucial: Weather card should NOT be attached to emergency query!
+      expect(resEn.weatherData, isNull);
+
+      // 2. Hindi emergency
+      final resHi = await service.processOfflineQuery('बाढ़ आ गई है, आपातकालीन स्थिति है बचाओ');
+      expect(resHi.text, contains('आपातकालीन सहायता एवं आपदा हेल्पलाइन'));
+      expect(resHi.text, contains('112'));
+      expect(resHi.text, contains('1078'));
+      expect(resHi.weatherData, isNull);
+
+      // 3. Telugu emergency
+      final resTe = await service.processOfflineQuery('వరదలు వచ్చాయి అత్యవసర సహాయం కావాలి');
+      expect(resTe.text, contains('అత్యవసర సహాయం & విపత్తు హెల్ప్‌లైన్లు'));
+      expect(resTe.text, contains('112'));
+      expect(resTe.text, contains('1078'));
+      expect(resTe.weatherData, isNull);
+
+      // 4. Marathi emergency
+      final resMr = await service.processOfflineQuery('पूर आला आहे, आपत्कालीन मदत हवी आहे');
+      expect(resMr.text, contains('आपत्कालीन मदत आणि आपत्ती निवारण हेल्पलाइन'));
+      expect(resMr.text, contains('112'));
+      expect(resMr.text, contains('1078'));
+      expect(resMr.weatherData, isNull);
+    });
+
+    test('Weather card bubble is displayed ONLY for explicit weather queries and suppressed otherwise', () async {
+      final service = OfflineEdgeAiService.instance;
+      await OfflineWeatherCache.instance.saveTelemetry({
+        'location_name': 'Secunderabad',
+        'latitude': 17.4399,
+        'longitude': 78.4983,
+        'temperature': 24.0,
+        'condition': 'Clear',
+        'rain_chance': 0,
+      });
+
+      // Explicit weather query -> weatherData included
+      final resWeather = await service.processOfflineQuery('What is the weather and temperature right now?');
+      expect(resWeather.weatherData, isNotNull);
+      expect(resWeather.text, contains('Loaded from cache data'));
+
+      // Non-weather queries -> weatherData suppressed (null)
+      final resGreeting = await service.processOfflineQuery('Hi hello good morning');
+      expect(resGreeting.weatherData, isNull);
+
+      final resClothes = await service.processOfflineQuery('What clothes should I wear today?');
+      expect(resClothes.weatherData, isNull);
+
+      final resFitness = await service.processOfflineQuery('Can I go for outdoor running?');
+      expect(resFitness.weatherData, isNull);
     });
   });
 }

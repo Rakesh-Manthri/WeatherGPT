@@ -610,7 +610,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     Icon(Icons.cloud_done_outlined, size: 14, color: Color(0xFF455A64)),
                     SizedBox(width: 6),
                     Text(
-                      'Loaded from local offline cache',
+                      'Loaded from cache data',
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w500,
