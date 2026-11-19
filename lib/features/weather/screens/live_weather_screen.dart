@@ -197,6 +197,7 @@ class HourlyWeatherItem {
   final int humidity;
   final double windSpeed;
   final bool isDay;
+  final String? customLabel;
 
   const HourlyWeatherItem({
     required this.time,
@@ -205,6 +206,7 @@ class HourlyWeatherItem {
     required this.humidity,
     this.windSpeed = 12.0,
     this.isDay = true,
+    this.customLabel,
   });
 
   IconData get icon {
@@ -313,10 +315,16 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
   String? _errorMessage;
   LiveWeatherData? _weatherData;
   bool _is5DayExpanded = false;
+  bool? _overrideDayMode;
 
   late double _currentLat;
   late double _currentLon;
   late String _currentLocationName;
+
+  bool get _isDay =>
+      _overrideDayMode ??
+      (_weatherData?.isDay ??
+          (DateTime.now().hour >= 6 && DateTime.now().hour < 18));
 
   @override
   void initState() {
@@ -334,18 +342,18 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
 
   void _parseFromExternalMap(Map<String, dynamic> data) {
     try {
-      final temp = (data['temperature'] as num?)?.toDouble() ?? 21.0;
-      final apparent = (data['apparent_temperature'] as num?)?.toDouble() ?? 19.0;
-      final hum = (data['humidity'] as num?)?.toInt() ?? 44;
-      final wSpeed = (data['wind_speed'] as num?)?.toDouble() ?? 14.9;
-      final wDir = (data['wind_direction'] as num?)?.toInt() ?? 0;
-      final press = (data['pressure'] as num?)?.toDouble() ?? 1013.0;
-      final uv = (data['uv_index'] as num?)?.toDouble() ?? 0.0;
-      final wCode = (data['weather_code'] as num?)?.toInt() ?? 0;
       final isDay = (data['is_day'] as bool?) ?? false;
-      final tMax = (data['temp_max'] as num?)?.toDouble() ?? 28.0;
-      final tMin = (data['temp_min'] as num?)?.toDouble() ?? 14.0;
-      final aqiVal = (data['aqi'] as num?)?.toInt() ?? 106;
+      final temp = (data['temperature'] as num?)?.toDouble() ?? (isDay ? 18.0 : 21.0);
+      final apparent = (data['apparent_temperature'] as num?)?.toDouble() ?? (isDay ? 20.0 : 19.0);
+      final hum = (data['humidity'] as num?)?.toInt() ?? (isDay ? 72 : 44);
+      final wSpeed = (data['wind_speed'] as num?)?.toDouble() ?? (isDay ? 9.8 : 14.9);
+      final wDir = (data['wind_direction'] as num?)?.toInt() ?? (isDay ? 180 : 0);
+      final press = (data['pressure'] as num?)?.toDouble() ?? (isDay ? 1023.0 : 1013.0);
+      final uv = (data['uv_index'] as num?)?.toDouble() ?? (isDay ? 3.0 : 0.0);
+      final wCode = (data['weather_code'] as num?)?.toInt() ?? 0;
+      final tMax = (data['temp_max'] as num?)?.toDouble() ?? (isDay ? 20.0 : 28.0);
+      final tMin = (data['temp_min'] as num?)?.toDouble() ?? (isDay ? 8.0 : 14.0);
+      final aqiVal = (data['aqi'] as num?)?.toInt() ?? (isDay ? 26 : 106);
       final spread = (data['ensemble_spread_c'] as num?)?.toDouble();
       final rainCh = (data['rain_chance'] as num?)?.toInt() ?? 0;
       final isWn = data['is_weathernext_primary'] == true;
@@ -355,26 +363,36 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
       for (int i = 0; i < hourlyRaw.length; i++) {
         final h = hourlyRaw[i];
         if (h is Map) {
+          final customLbl = h['custom_label']?.toString() ?? h['label']?.toString();
           hourlyItems.add(
             HourlyWeatherItem(
               time: h['time']?.toString() ?? 'Now',
-              temp: (h['temp'] as num?)?.toDouble() ?? 21.0,
+              temp: (h['temp'] as num?)?.toDouble() ?? temp,
               weatherCode: (h['weather_code'] as num?)?.toInt() ?? 0,
-              humidity: (h['humidity'] as num?)?.toInt() ?? 44,
-              windSpeed: (h['wind_speed'] as num?)?.toDouble() ?? 14.0,
-              isDay: isDay,
+              humidity: (h['humidity'] as num?)?.toInt() ?? hum,
+              windSpeed: (h['wind_speed'] as num?)?.toDouble() ?? wSpeed,
+              isDay: (h['is_day'] as bool?) ?? isDay,
+              customLabel: customLbl,
             ),
           );
         }
       }
 
-      final List<DailyWeatherItem> dailyItems = [
-        DailyWeatherItem(dayName: 'Today', weatherCode: 0, maxTemp: tMax, minTemp: tMin, conditionName: 'Clear'),
-        DailyWeatherItem(dayName: 'Tomorrow', weatherCode: 2, maxTemp: tMax + 2, minTemp: tMin + 1, conditionName: 'Cloudy'),
-        DailyWeatherItem(dayName: 'Sat', weatherCode: 0, maxTemp: tMax + 2, minTemp: tMin + 3, conditionName: 'Clear'),
-        DailyWeatherItem(dayName: 'Sun', weatherCode: 1, maxTemp: tMax + 1, minTemp: tMin + 2, conditionName: 'Mainly Clear'),
-        DailyWeatherItem(dayName: 'Mon', weatherCode: 0, maxTemp: tMax, minTemp: tMin + 1, conditionName: 'Clear'),
-      ];
+      final List<DailyWeatherItem> dailyItems = isDay
+          ? [
+              DailyWeatherItem(dayName: 'Thu', weatherCode: 0, maxTemp: tMax, minTemp: tMin, conditionName: 'Clear'),
+              DailyWeatherItem(dayName: 'Fri', weatherCode: 0, maxTemp: 20.0, minTemp: 12.0, conditionName: 'Clear'),
+              DailyWeatherItem(dayName: 'Sat', weatherCode: 95, maxTemp: 18.0, minTemp: 3.0, conditionName: 'Thunderstorm'),
+              DailyWeatherItem(dayName: 'Sun', weatherCode: 1, maxTemp: 19.0, minTemp: 6.0, conditionName: 'Mainly Clear'),
+              DailyWeatherItem(dayName: 'Mon', weatherCode: 0, maxTemp: 21.0, minTemp: 8.0, conditionName: 'Clear'),
+            ]
+          : [
+              DailyWeatherItem(dayName: 'Today', weatherCode: 0, maxTemp: tMax, minTemp: tMin, conditionName: 'Clear'),
+              DailyWeatherItem(dayName: 'Tomorrow', weatherCode: 2, maxTemp: tMax + 2, minTemp: tMin + 1, conditionName: 'Cloudy'),
+              DailyWeatherItem(dayName: 'Sat', weatherCode: 0, maxTemp: tMax + 2, minTemp: tMin + 3, conditionName: 'Clear'),
+              DailyWeatherItem(dayName: 'Sun', weatherCode: 1, maxTemp: tMax + 1, minTemp: tMin + 2, conditionName: 'Mainly Clear'),
+              DailyWeatherItem(dayName: 'Mon', weatherCode: 0, maxTemp: tMax, minTemp: tMin + 1, conditionName: 'Clear'),
+            ];
 
       setState(() {
         _weatherData = LiveWeatherData(
@@ -392,13 +410,13 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
           uvIndex: uv,
           weatherCode: wCode,
           isDay: isDay,
-          sunrise: '06:23',
-          sunset: '17:40',
+          sunrise: isDay ? '07:09' : '06:23',
+          sunset: isDay ? '17:04' : '17:40',
           tempMax: tMax,
           tempMin: tMin,
           aqi: aqiVal,
-          pm25: 38.0,
-          pm10: 72.0,
+          pm25: isDay ? 12.0 : 38.0,
+          pm10: isDay ? 24.0 : 72.0,
           no2: 18.0,
           so2: 6.0,
           co: 340.0,
@@ -418,11 +436,24 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
   }
 
   List<HourlyWeatherItem> _generateFallbackHourly(double baseTemp, bool isDay) {
+    if (isDay) {
+      return [
+        HourlyWeatherItem(time: 'Now', temp: baseTemp, weatherCode: 0, humidity: 72, windSpeed: 9.8, isDay: true),
+        HourlyWeatherItem(time: '13:00', temp: baseTemp + 1, weatherCode: 0, humidity: 68, windSpeed: 16.7, isDay: true),
+        HourlyWeatherItem(time: '14:00', temp: baseTemp + 2, weatherCode: 0, humidity: 65, windSpeed: 16.7, isDay: true),
+        HourlyWeatherItem(time: '15:00', temp: baseTemp + 1, weatherCode: 0, humidity: 64, windSpeed: 16.7, isDay: true),
+        HourlyWeatherItem(time: '16:00', temp: baseTemp, weatherCode: 0, humidity: 66, windSpeed: 14.8, isDay: true),
+        HourlyWeatherItem(time: '17:00', temp: baseTemp - 2, weatherCode: 0, humidity: 70, windSpeed: 13.0, isDay: true),
+        HourlyWeatherItem(time: '17:04', temp: baseTemp - 3, weatherCode: 0, humidity: 72, windSpeed: 13.0, isDay: false, customLabel: 'Sunset'),
+        HourlyWeatherItem(time: '18:00', temp: baseTemp - 4, weatherCode: 0, humidity: 75, windSpeed: 12.0, isDay: false),
+        HourlyWeatherItem(time: '19:00', temp: baseTemp - 5, weatherCode: 0, humidity: 78, windSpeed: 10.5, isDay: false),
+      ];
+    }
     return [
-      HourlyWeatherItem(time: 'Now', temp: baseTemp, weatherCode: 0, humidity: 44, windSpeed: 14.9, isDay: isDay),
+      HourlyWeatherItem(time: 'Now', temp: baseTemp, weatherCode: 0, humidity: 44, windSpeed: 14.9, isDay: false),
       HourlyWeatherItem(time: '22:00', temp: baseTemp - 1, weatherCode: 0, humidity: 46, windSpeed: 13.0, isDay: false),
       HourlyWeatherItem(time: '23:00', temp: baseTemp - 2, weatherCode: 0, humidity: 50, windSpeed: 11.1, isDay: false),
-      HourlyWeatherItem(time: '00:00', temp: baseTemp - 3, weatherCode: 0, humidity: 54, windSpeed: 11.1, isDay: false),
+      HourlyWeatherItem(time: '20/11', temp: baseTemp - 3, weatherCode: 0, humidity: 54, windSpeed: 11.1, isDay: false),
       HourlyWeatherItem(time: '01:00', temp: baseTemp - 4, weatherCode: 0, humidity: 58, windSpeed: 9.5, isDay: false),
       HourlyWeatherItem(time: '02:00', temp: baseTemp - 5, weatherCode: 0, humidity: 62, windSpeed: 8.5, isDay: false),
       HourlyWeatherItem(time: '06:00', temp: baseTemp - 6, weatherCode: 0, humidity: 68, windSpeed: 7.2, isDay: false),
@@ -679,6 +710,7 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (ctx) => _CitySearchSheet(
+        isDay: _isDay,
         onSelectCity: (name, lat, lon) {
           Navigator.pop(ctx);
           _fetchLiveWeather(lat: lat, lon: lon, name: name);
@@ -689,37 +721,52 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final dayGradient = const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        Color(0xFF4FA0FA),
+        Color(0xFF4093F7),
+        Color(0xFF3388F2),
+        Color(0xFF287DE9),
+        Color(0xFF1E6FDC),
+      ],
+      stops: [0.0, 0.22, 0.50, 0.78, 1.0],
+    );
+
+    final nightGradient = const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        Color(0xFF071739),
+        Color(0xFF0C244F),
+        Color(0xFF143B77),
+        Color(0xFF18458A),
+        Color(0xFF1B4D96),
+      ],
+      stops: [0.0, 0.25, 0.55, 0.8, 1.0],
+    );
+
     return Scaffold(
       body: Stack(
         children: [
-          // 1. Deep Midnight Cosmic Blue Background Gradient
+          // 1. Dynamic Background Gradient: Day Azure vs Night Cosmic Midnight
           Positioned.fill(
             child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0xFF071739),
-                    Color(0xFF0C244F),
-                    Color(0xFF143B77),
-                    Color(0xFF18458A),
-                    Color(0xFF1B4D96),
-                  ],
-                  stops: [0.0, 0.25, 0.55, 0.8, 1.0],
-                ),
+              decoration: BoxDecoration(
+                gradient: _isDay ? dayGradient : nightGradient,
               ),
             ),
           ),
 
-          // 2. Twinkling Sky Particles
+          // 2. Atmospheric Sky Effect: Soft daytime cumulus clouds vs Twinkling nocturnal stars
           Positioned(
             top: 0,
             left: 0,
             right: 0,
             height: 380,
             child: CustomPaint(
-              painter: _StarFieldPainter(),
+              painter: _isDay ? _DaytimeCloudPainter() : _StarFieldPainter(),
             ),
           ),
 
@@ -727,7 +774,7 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
           SafeArea(
             child: Column(
               children: [
-                // Top App Bar: "+" ... City ... "..."
+                // Top App Bar: "+" ... City & Indicator ... "..."
                 _buildTopAppBar(),
 
                 Expanded(
@@ -777,7 +824,7 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
                                 lon: _currentLon,
                                 name: _currentLocationName,
                               ),
-                              color: const Color(0xFF1B4D96),
+                              color: _isDay ? const Color(0xFF1E6FDC) : const Color(0xFF1B4D96),
                               backgroundColor: Colors.white,
                               child: ListView(
                                 physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
@@ -818,7 +865,7 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
   }
 
   /// Top App Bar matching the screenshot:
-  /// Left "+" | Center "City Name" | Right "..."
+  /// Left "+" | Center "City Name" with navigation indicator | Right "..."
   Widget _buildTopAppBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -832,48 +879,144 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
             onPressed: _showCitySearchSheet,
           ),
           Expanded(
-            child: Text(
-              _currentLocationName,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-                letterSpacing: -0.3,
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _currentLocationName,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Transform.rotate(
+                      angle: -0.35,
+                      child: const Icon(
+                        Icons.navigation,
+                        size: 8,
+                        color: Colors.white70,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Container(
+                      width: 4,
+                      height: 4,
+                      decoration: const BoxDecoration(
+                        color: Colors.white70,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: Colors.white, size: 24),
-            color: const Color(0xFF143B77),
+            color: _isDay ? const Color(0xFF287DE9) : const Color(0xFF143B77),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             onSelected: (val) {
               if (val == 'refresh') {
                 _fetchLiveWeather(lat: _currentLat, lon: _currentLon, name: _currentLocationName);
               } else if (val == 'search') {
                 _showCitySearchSheet();
+              } else if (val == 'toggle_theme') {
+                setState(() {
+                  final next = !_isDay;
+                  _overrideDayMode = next;
+                  if (_weatherData != null) {
+                    _weatherData = LiveWeatherData(
+                      locationName: _weatherData!.locationName,
+                      latitude: _weatherData!.latitude,
+                      longitude: _weatherData!.longitude,
+                      temperature: _weatherData!.temperature,
+                      apparentTemperature: _weatherData!.apparentTemperature,
+                      humidity: _weatherData!.humidity,
+                      precipitation: _weatherData!.precipitation,
+                      windSpeed: _weatherData!.windSpeed,
+                      windDirection: _weatherData!.windDirection,
+                      windGusts: _weatherData!.windGusts,
+                      pressure: _weatherData!.pressure,
+                      uvIndex: _weatherData!.uvIndex,
+                      weatherCode: _weatherData!.weatherCode,
+                      isDay: next,
+                      sunrise: _weatherData!.sunrise,
+                      sunset: _weatherData!.sunset,
+                      tempMax: _weatherData!.tempMax,
+                      tempMin: _weatherData!.tempMin,
+                      aqi: _weatherData!.aqi,
+                      pm25: _weatherData!.pm25,
+                      pm10: _weatherData!.pm10,
+                      no2: _weatherData!.no2,
+                      so2: _weatherData!.so2,
+                      co: _weatherData!.co,
+                      o3: _weatherData!.o3,
+                      hourly: _generateFallbackHourly(_weatherData!.temperature, next),
+                      daily: _weatherData!.daily,
+                      updatedAt: _weatherData!.updatedAt,
+                      ensembleSpread: _weatherData!.ensembleSpread,
+                      isWeatherNextPrimary: _weatherData!.isWeatherNextPrimary,
+                      rainChance: _weatherData!.rainChance,
+                    );
+                  }
+                });
               }
             },
             itemBuilder: (ctx) => [
               const PopupMenuItem(
                 value: 'refresh',
                 child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
-                    SizedBox(width: 10),
-                    Text('Refresh Telemetry', style: TextStyle(color: Colors.white)),
+                    Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Refresh Telemetry',
+                        style: TextStyle(color: Colors.white, fontSize: 14),
+                      ),
+                    ),
                   ],
                 ),
               ),
               const PopupMenuItem(
                 value: 'search',
                 child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.search_rounded, color: Colors.white, size: 20),
-                    SizedBox(width: 10),
-                    Text('Change Location', style: TextStyle(color: Colors.white)),
+                    Icon(Icons.search_rounded, color: Colors.white, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Change Location',
+                        style: TextStyle(color: Colors.white, fontSize: 14),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'toggle_theme',
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(_isDay ? Icons.nightlight_round : Icons.wb_sunny_rounded, color: Colors.white, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _isDay ? 'Switch to Night View' : 'Switch to Day View',
+                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -884,11 +1027,17 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
     );
   }
 
-  /// Hero Current Weather matching Screenshot 1:
-  /// "21°c"
-  /// "Clear 28°/14°"
-  /// "AQI 106" capsule pill
+  /// Hero Current Weather matching Screenshots (Day Azure & Night Cosmic Blue):
+  /// Large Temp "18°C" or "21°C"
+  /// "Clear 20°/8°" or "Clear 28°/14°"
+  /// Capsule pill: Leaf AQI 26 in Day / Mask AQI 106 in Night
   Widget _buildHeroSection(LiveWeatherData data) {
+    final pillBg = _isDay ? Colors.white.withValues(alpha: 0.24) : Colors.white.withValues(alpha: 0.16);
+    final pillBorder = _isDay
+        ? Border.all(color: Colors.white.withValues(alpha: 0.32), width: 0.8)
+        : Border.all(color: Colors.white.withValues(alpha: 0.22), width: 0.8);
+    final aqiIcon = (data.aqi <= 50 || (_isDay && data.aqi <= 100)) ? Icons.eco_rounded : Icons.masks_rounded;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -938,22 +1087,19 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
         ),
         const SizedBox(height: 14),
 
-        // AQI Capsule Pill matching Screenshot 1
+        // AQI Capsule Pill matching Screenshots
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.16),
+            color: pillBg,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.22),
-              width: 0.8,
-            ),
+            border: pillBorder,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.masks_rounded,
+              Icon(
+                aqiIcon,
                 size: 15,
                 color: Colors.white,
               ),
@@ -992,26 +1138,27 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
     );
   }
 
-  /// 5-Day Forecast Card matching Screenshot 1 & 2:
+  /// 5-Day Forecast Card matching Screenshots:
   /// - Calendar icon + "5-day forecast"
-  /// - "Today Clear" ... "28° / 14°"
-  /// - "Tomorrow Cloudy" ... "30° / 15°"
-  /// - "Sat Clear" ... "30° / 17°"
+  /// - Daily rows with weather icon and temperatures
   /// - Full-width pill button: "5-day forecast" (toggles expand)
   Widget _buildFiveDayForecastCard(LiveWeatherData data) {
     final displayItems = _is5DayExpanded
         ? data.daily
         : data.daily.take(3).toList();
 
+    final cardBg = _isDay ? Colors.white.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.12);
+    final cardBorder = _isDay
+        ? Border.all(color: Colors.white.withValues(alpha: 0.28), width: 0.8)
+        : Border.all(color: Colors.white.withValues(alpha: 0.15), width: 0.8);
+    final buttonBg = _isDay ? Colors.white.withValues(alpha: 0.22) : Colors.white.withValues(alpha: 0.16);
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
+        color: cardBg,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.15),
-          width: 0.8,
-        ),
+        border: cardBorder,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1095,7 +1242,7 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
               height: 44,
               width: double.infinity,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.16),
+                color: buttonBg,
                 borderRadius: BorderRadius.circular(22),
               ),
               child: Center(
@@ -1115,23 +1262,25 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
     );
   }
 
-  /// 24-Hour Forecast Card matching Screenshot 2:
+  /// 24-Hour Forecast Card matching Screenshots:
   /// - Clock icon + "24-hour forecast"
-  /// - Smooth continuous lime-yellow spline curve with temperature labels
+  /// - Smooth continuous lime-yellow spline curve with temperature / Sunset labels
   /// - Dotted vertical drop-line at "Now"
-  /// - Weather icons under curve
-  /// - Wind speed under icons ("14.9km/h")
-  /// - Time labels under wind speed ("Now", "22:00", etc.)
+  /// - Weather icons under curve (amber suns in Day, crescent moons in Night)
+  /// - Wind speed under icons ("9.8km/h" or "14.9km/h")
+  /// - Time labels under wind speed ("Now", "13:00", "17:04", etc.)
   Widget _buildHourlyForecastCard(LiveWeatherData data) {
+    final cardBg = _isDay ? Colors.white.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.12);
+    final cardBorder = _isDay
+        ? Border.all(color: Colors.white.withValues(alpha: 0.28), width: 0.8)
+        : Border.all(color: Colors.white.withValues(alpha: 0.15), width: 0.8);
+
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
+        color: cardBg,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.15),
-          width: 0.8,
-        ),
+        border: cardBorder,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1167,20 +1316,22 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
     );
   }
 
-  /// Asymmetric Meteorological Grid matching Screenshot 2:
+  /// Asymmetric Meteorological Grid matching Screenshots:
   /// Left Column:
-  ///   - Wind Compass Card ("North", "14.9km/h", Compass dial)
-  ///   - Sun Arc Card ("06:23 Sunrise", "17:40 Sunset", Parabolic arc)
+  ///   - Wind Compass Card ("South" 9.8km/h or "North" 14.9km/h, Compass dial)
+  ///   - Sun Arc Card (Sunrise/Sunset, Peak zenith sun in Day / nocturnal moon in Night)
   /// Right Column (Taller card spanning both left cards):
-  ///   - Humidity 44%
-  ///   - Real feel 19°
-  ///   - UV 0
-  ///   - Pressure 1013mbar
-  ///   - Chance of rain 0%
+  ///   - Humidity (e.g. 72% / 44%)
+  ///   - Real feel (e.g. 20° / 19°)
+  ///   - UV (e.g. 3 / 0)
+  ///   - Pressure (e.g. 1023mbar / 1013mbar)
+  ///   - Chance of rain (0%)
   Widget _buildMeteorologicalGrid(LiveWeatherData data) {
     const cardRadius = 24.0;
-    final cardBorder = Border.all(color: Colors.white.withValues(alpha: 0.15), width: 0.8);
-    final cardBg = Colors.white.withValues(alpha: 0.12);
+    final cardBorder = _isDay
+        ? Border.all(color: Colors.white.withValues(alpha: 0.28), width: 0.8)
+        : Border.all(color: Colors.white.withValues(alpha: 0.15), width: 0.8);
+    final cardBg = _isDay ? Colors.white.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.12);
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1337,26 +1488,29 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
   Widget _buildDivider() {
     return Container(
       height: 0.6,
-      color: Colors.white.withValues(alpha: 0.12),
+      color: _isDay ? Colors.white.withValues(alpha: 0.16) : Colors.white.withValues(alpha: 0.12),
     );
   }
 
-  /// AQI Banner Card matching Screenshot 2
+  /// AQI Banner Card matching Screenshots
   Widget _buildAqiBannerCard(LiveWeatherData data) {
+    final cardBg = _isDay ? Colors.white.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.12);
+    final cardBorder = _isDay
+        ? Border.all(color: Colors.white.withValues(alpha: 0.28), width: 0.8)
+        : Border.all(color: Colors.white.withValues(alpha: 0.15), width: 0.8);
+    final aqiIcon = (data.aqi <= 50 || (_isDay && data.aqi <= 100)) ? Icons.eco_rounded : Icons.masks_rounded;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
+        color: cardBg,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.15),
-          width: 0.8,
-        ),
+        border: cardBorder,
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.masks_rounded,
+          Icon(
+            aqiIcon,
             size: 24,
             color: Colors.white,
           ),
@@ -1400,7 +1554,7 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
     );
   }
 
-  /// Provider Footer matching Screenshot 2
+  /// Provider Footer matching Screenshots
   Widget _buildProviderFooter(LiveWeatherData data) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -1570,11 +1724,11 @@ class _TemperatureSplinePainter extends CustomPainter {
     // Render floating temperature texts above each point
     for (int i = 0; i < points.length; i++) {
       final pt = points[i];
-      final tempText = '${hourlyItems[i].temp.round()}°';
+      final tempText = hourlyItems[i].customLabel ?? '${hourlyItems[i].temp.round()}°';
       final textSpan = TextSpan(
         text: tempText,
-        style: const TextStyle(
-          fontSize: 14,
+        style: TextStyle(
+          fontSize: hourlyItems[i].customLabel != null ? 12 : 14,
           fontWeight: FontWeight.w600,
           color: Colors.white,
         ),
@@ -1673,7 +1827,7 @@ class _CompassPainter extends CustomPainter {
 }
 
 /// ----------------------------------------------------------------------
-/// Parabolic Sun / Moon Arc Position Widget matching Screenshot 2
+/// Parabolic Sun / Moon Arc Position Widget matching Screenshots
 /// ----------------------------------------------------------------------
 class _SunArcPainter extends CustomPainter {
   final bool isDay;
@@ -1708,9 +1862,9 @@ class _SunArcPainter extends CustomPainter {
       basePaint,
     );
 
-    // Dot along the arc representing current progress
-    // At night (like screenshot), dot is near bottom right
-    final progress = isDay ? 0.45 : 0.88;
+    // Dot along the arc representing current progress:
+    // Midday sun in day is at the zenith apex (0.50), nocturnal moon is at 0.88
+    final progress = isDay ? 0.50 : 0.88;
     final dotX = size.width * progress;
     // Quadratic equation: y = (1-t)^2 * y0 + 2(1-t)t * y1 + t^2 * y2
     final t = progress;
@@ -1718,22 +1872,72 @@ class _SunArcPainter extends CustomPainter {
         2 * (1 - t) * t * (-8) +
         pow(t, 2) * (size.height - 4);
 
-    // Halo
-    final haloPaint = Paint()
-      ..color = (isDay ? const Color(0xFFFFA000) : Colors.white).withValues(alpha: 0.3)
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(Offset(dotX, dotY), 7.0, haloPaint);
+    if (isDay) {
+      // Outer radiant sun flare glow
+      final glowPaint = Paint()
+        ..color = const Color(0xFFFFF9C4).withValues(alpha: 0.45)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+      canvas.drawCircle(Offset(dotX, dotY), 12.0, glowPaint);
 
-    // Core
-    final corePaint = Paint()
-      ..color = isDay ? const Color(0xFFFFD54F) : const Color(0xFFE0E0E0)
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(Offset(dotX, dotY), 3.5, corePaint);
+      // Amber halo
+      final haloPaint = Paint()
+        ..color = const Color(0xFFFFA000).withValues(alpha: 0.35)
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(Offset(dotX, dotY), 7.5, haloPaint);
+
+      // Radiant white core
+      final corePaint = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(Offset(dotX, dotY), 4.0, corePaint);
+    } else {
+      // Lunar halo
+      final haloPaint = Paint()
+        ..color = Colors.white.withValues(alpha: 0.3)
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(Offset(dotX, dotY), 7.0, haloPaint);
+
+      // Lunar core
+      final corePaint = Paint()
+        ..color = const Color(0xFFE0E0E0)
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(Offset(dotX, dotY), 3.5, corePaint);
+    }
   }
 
   @override
   bool shouldRepaint(covariant _SunArcPainter oldDelegate) =>
       oldDelegate.isDay != isDay;
+}
+
+/// ----------------------------------------------------------------------
+/// Soft Translucent Clouds in Radiant Daytime Azure Sky
+/// ----------------------------------------------------------------------
+class _DaytimeCloudPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cloudPaint1 = Paint()
+      ..color = Colors.white.withValues(alpha: 0.22)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 28);
+
+    final cloudPaint2 = Paint()
+      ..color = Colors.white.withValues(alpha: 0.16)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 36);
+
+    final cloudPaint3 = Paint()
+      ..color = Colors.white.withValues(alpha: 0.28)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 22);
+
+    // Organic cloud puffs across top/upper sky matching Screenshot 4
+    canvas.drawOval(Rect.fromLTWH(size.width * 0.45, -20, size.width * 0.7, 140), cloudPaint1);
+    canvas.drawOval(Rect.fromLTWH(size.width * 0.2, 30, size.width * 0.5, 90), cloudPaint2);
+    canvas.drawOval(Rect.fromLTWH(-size.width * 0.1, -10, size.width * 0.55, 120), cloudPaint2);
+    canvas.drawOval(Rect.fromLTWH(size.width * 0.55, 60, size.width * 0.45, 80), cloudPaint3);
+    canvas.drawOval(Rect.fromLTWH(size.width * 0.1, 80, size.width * 0.6, 70), cloudPaint1);
+  }
+
+  @override
+  bool shouldRepaint(covariant _DaytimeCloudPainter oldDelegate) => false;
 }
 
 /// ----------------------------------------------------------------------
@@ -1764,9 +1968,13 @@ class _StarFieldPainter extends CustomPainter {
 /// City Search Bottom Sheet
 /// ----------------------------------------------------------------------
 class _CitySearchSheet extends StatefulWidget {
+  final bool isDay;
   final void Function(String name, double lat, double lon) onSelectCity;
 
-  const _CitySearchSheet({required this.onSelectCity});
+  const _CitySearchSheet({
+    required this.onSelectCity,
+    this.isDay = false,
+  });
 
   @override
   State<_CitySearchSheet> createState() => _CitySearchSheetState();
@@ -1840,9 +2048,9 @@ class _CitySearchSheetState extends State<_CitySearchSheet> {
     return Container(
       height: MediaQuery.of(context).size.height * 0.75,
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-      decoration: const BoxDecoration(
-        color: Color(0xFF0C244F),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      decoration: BoxDecoration(
+        color: widget.isDay ? const Color(0xFF2473DE) : const Color(0xFF0C244F),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
