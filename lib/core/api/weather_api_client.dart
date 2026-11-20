@@ -58,6 +58,7 @@ class WeatherApiClient {
 
     // Priority 2: Local Wi-Fi network IPs, Android Emulator, and Localhost
     urls.addAll([
+      'http://192.168.137.251:8000/api', // Current Host Wi-Fi IP
       'http://192.168.0.101:8000/api', // Current Local Wi-Fi network IP
       'http://192.168.0.104:8000/api', // Alternate Wi-Fi IP
       'http://10.0.2.2:8000/api',      // Android emulator host alias
@@ -69,12 +70,18 @@ class WeatherApiClient {
 
   String? _resolvedBaseUrl;
 
-  Dio _createDio(String baseUrl, {int timeoutSeconds = 5}) {
+  Dio _createDio(
+    String baseUrl, {
+    int timeoutSeconds = 5,
+    int? receiveTimeoutSeconds,
+  }) {
     final dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
         connectTimeout: Duration(seconds: timeoutSeconds),
-        receiveTimeout: const Duration(seconds: 15),
+        receiveTimeout: Duration(
+          seconds: receiveTimeoutSeconds ?? (timeoutSeconds > 15 ? timeoutSeconds + 5 : 30),
+        ),
       ),
     );
 
@@ -172,7 +179,14 @@ class WeatherApiClient {
     // 1. If we already know which URL works, try it first
     if (_resolvedBaseUrl != null) {
       try {
-        final dio = _createDio(_resolvedBaseUrl!, timeoutSeconds: 15);
+        final isRender = _resolvedBaseUrl!.contains('onrender.com');
+        final timeout = isRender ? 50 : 15;
+        final receiveTimeout = isRender ? 55 : 30;
+        final dio = _createDio(
+          _resolvedBaseUrl!,
+          timeoutSeconds: timeout,
+          receiveTimeoutSeconds: receiveTimeout,
+        );
         final response = await dio.post('/chat/completions', data: payload);
         final res = ChatCompletionResult.fromResponseJson(
           Map<String, dynamic>.from(response.data as Map),
@@ -188,12 +202,17 @@ class WeatherApiClient {
     }
 
     // 2. Auto-discovery: iterate through candidates
-    // Give Render cold-start extra time (up to 30s) if it is the production URL
+    // Give Render cold-start extra time (up to 50s) if it is the production URL
     for (final url in candidates) {
       try {
         final isRender = url.contains('onrender.com');
-        final timeout = isRender ? 30 : 4;
-        final dio = _createDio(url, timeoutSeconds: timeout);
+        final timeout = isRender ? 50 : 3;
+        final receiveTimeout = isRender ? 55 : 15;
+        final dio = _createDio(
+          url,
+          timeoutSeconds: timeout,
+          receiveTimeoutSeconds: receiveTimeout,
+        );
         final response = await dio.post('/chat/completions', data: payload);
         _resolvedBaseUrl = url; // Remember working endpoint
         final res = ChatCompletionResult.fromResponseJson(
@@ -287,7 +306,12 @@ class WeatherApiClient {
 
     for (final baseUrl in _candidateUrls) {
       try {
-        final dio = _createDio(baseUrl, timeoutSeconds: 3);
+        final isRender = baseUrl.contains('onrender.com');
+        final dio = _createDio(
+          baseUrl,
+          timeoutSeconds: isRender ? 5 : 3,
+          receiveTimeoutSeconds: 8,
+        );
         final queryParams = <String, dynamic>{'category': cat, 'limit': limit};
         if (src != 'ALL') {
           queryParams['source'] = src;
@@ -318,7 +342,12 @@ class WeatherApiClient {
   }) async {
     for (final baseUrl in _candidateUrls) {
       try {
-        final dio = _createDio(baseUrl, timeoutSeconds: 3);
+        final isRender = baseUrl.contains('onrender.com');
+        final dio = _createDio(
+          baseUrl,
+          timeoutSeconds: isRender ? 5 : 3,
+          receiveTimeoutSeconds: 8,
+        );
         final query = <String, dynamic>{};
         if (lat != null && lon != null) {
           query['lat'] = lat;
@@ -439,7 +468,12 @@ class WeatherApiClient {
   }) async {
     for (final baseUrl in _candidateUrls) {
       try {
-        final dio = _createDio(baseUrl, timeoutSeconds: 3);
+        final isRender = baseUrl.contains('onrender.com');
+        final dio = _createDio(
+          baseUrl,
+          timeoutSeconds: isRender ? 5 : 3,
+          receiveTimeoutSeconds: 8,
+        );
         final res = await dio.get(
           '/weather/aqi-grid',
           queryParameters: {
