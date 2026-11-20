@@ -331,15 +331,188 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
   @override
   void initState() {
     super.initState();
-    _currentLat = widget.initialLat ?? 17.4399;
-    _currentLon = widget.initialLon ?? 78.4983;
-    _currentLocationName = widget.initialLocationName ?? 'Secunderabad';
 
     if (widget.initialWeatherData != null) {
+      _currentLat = widget.initialLat ??
+          (widget.initialWeatherData!['latitude'] ?? widget.initialWeatherData!['lat'] as num?)?.toDouble() ??
+          17.3850;
+      _currentLon = widget.initialLon ??
+          (widget.initialWeatherData!['longitude'] ?? widget.initialWeatherData!['lon'] as num?)?.toDouble() ??
+          78.4867;
+      _currentLocationName = widget.initialLocationName ??
+          (widget.initialWeatherData!['location_name']?.toString() ?? 'Current Location');
       _parseFromExternalMap(widget.initialWeatherData!);
-    } else {
+    } else if (widget.initialLat != null && widget.initialLon != null) {
+      _currentLat = widget.initialLat!;
+      _currentLon = widget.initialLon!;
+      _currentLocationName = widget.initialLocationName ?? 'Current Location';
       _fetchLiveWeather(lat: _currentLat, lon: _currentLon, name: _currentLocationName);
+    } else {
+      // Default live dashboard initialization:
+      // Auto-detect and display the user's actual current location
+      _currentLat = 17.3850;
+      _currentLon = 78.4867;
+      _currentLocationName = widget.initialLocationName ?? 'Locating...';
+      _resolveCurrentLocation();
     }
+  }
+
+  /// Automatically resolves user's current location via high-accuracy GPS
+  /// with seamless fallback to client IP geolocation and offline telemetry cache.
+  Future<void> _resolveCurrentLocation() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    // 1. Immediately check if there is cached telemetry from recent session
+    try {
+      final cached = await OfflineWeatherCache.instance.getCachedTelemetry();
+      if (cached != null && cached.isNotEmpty && mounted) {
+        final cachedLat = (cached['latitude'] ?? cached['lat'] as num?)?.toDouble();
+        final cachedLon = (cached['longitude'] ?? cached['lon'] as num?)?.toDouble();
+        final cachedLoc = cached['location_name']?.toString();
+        if (cachedLat != null && cachedLon != null && cachedLoc != null && cachedLoc.isNotEmpty) {
+          _currentLat = cachedLat;
+          _currentLon = cachedLon;
+          _currentLocationName = cachedLoc;
+          _parseFromExternalMap(cached);
+          setState(() {
+            _isLoadedFromCache = true;
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Cache pre-load error: $e');
+    }
+
+    double? detectedLat;
+    double? detectedLon;
+    String? detectedCity;
+
+    // 2. High-Accuracy GPS lookup via LocationService
+    try {
+      final pos = await LocationService.getCurrentPosition().timeout(
+        const Duration(seconds: 4),
+        onTimeout: () => null,
+      );
+      if (pos != null) {
+        detectedLat = pos.latitude;
+        detectedLon = pos.longitude;
+      }
+    } catch (e) {
+      debugPrint('GPS location lookup error: $e');
+    }
+
+    // 3. Fallback to client IP geolocation if GPS is unavailable / disabled
+    if (detectedLat == null || detectedLon == null) {
+      try {
+        final geoResponse = await _dio.get(
+          'https://api.bigdatacloud.net/data/reverse-geocode-client',
+          options: Options(receiveTimeout: const Duration(seconds: 4)),
+        );
+        if (geoResponse.statusCode == 200 && geoResponse.data is Map) {
+          final data = geoResponse.data as Map;
+          final latNum = data['latitude'] as num?;
+          final lonNum = data['longitude'] as num?;
+          if (latNum != null && lonNum != null) {
+            detectedLat = latNum.toDouble();
+            detectedLon = lonNum.toDouble();
+            final c = (data['city'] ?? data['locality'] ?? data['principalSubdivision'])?.toString();
+            if (c != null && c.trim().isNotEmpty) {
+              detectedCity = c.trim();
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('IP geolocation lookup error: $e');
+      }
+    }
+
+    // 4. Reverse-geocode coordinates to city name if not already resolved
+    if (detectedLat != null && detectedLon != null) {
+      if (detectedCity == null || detectedCity.isEmpty) {
+        detectedCity = await _reverseGeocode(detectedLat, detectedLon);
+      }
+      _currentLat = detectedLat;
+      _currentLon = detectedLon;
+      _currentLocationName = detectedCity;
+      await _fetchLiveWeather(lat: detectedLat, lon: detectedLon, name: detectedCity);
+      return;
+    }
+
+    // 5. If GPS and network IP geolocation both failed:
+    if (_weatherData != null) {
+      // Already displaying valid cached data
+      return;
+    }
+
+    // Fallback coordinates if completely offline with no GPS and no cache
+    _currentLat = 17.3850;
+    _currentLon = 78.4867;
+    _currentLocationName = 'Current Location';
+    await _fetchLiveWeather(lat: _currentLat, lon: _currentLon, name: _currentLocationName);
+  }
+
+  /// Reverse geocodes coordinates to a clean municipality / city name
+  Future<String> _reverseGeocode(double lat, double lon) async {
+    // 1. BigDataCloud reverse geocode client (fast, CORS-friendly, zero-auth)
+    try {
+      final res = await _dio.get(
+        'https://api.bigdatacloud.net/data/reverse-geocode-client',
+        queryParameters: {
+          'latitude': lat,
+          'longitude': lon,
+          'localityLanguage': 'en',
+        },
+        options: Options(receiveTimeout: const Duration(seconds: 4)),
+      );
+      if (res.statusCode == 200 && res.data is Map) {
+        final data = res.data as Map;
+        final city = (data['city'] ?? data['locality'] ?? data['principalSubdivision'])?.toString();
+        if (city != null && city.trim().isNotEmpty) {
+          return city.trim();
+        }
+      }
+    } catch (e) {
+      debugPrint('BigDataCloud reverse geocode error: $e');
+    }
+
+    // 2. OpenStreetMap Nominatim fallback
+    try {
+      final res = await _dio.get(
+        'https://nominatim.openstreetmap.org/reverse',
+        queryParameters: {
+          'lat': lat,
+          'lon': lon,
+          'format': 'json',
+          'zoom': 10,
+        },
+        options: Options(
+          headers: {'User-Agent': 'WeatherGPT/1.0'},
+          receiveTimeout: const Duration(seconds: 4),
+        ),
+      );
+      if (res.statusCode == 200 && res.data is Map) {
+        final address = res.data['address'] as Map?;
+        final city = (address?['city'] ??
+                address?['town'] ??
+                address?['village'] ??
+                address?['suburb'] ??
+                address?['municipality'] ??
+                address?['county'] ??
+                address?['state'])
+            ?.toString();
+        if (city != null && city.trim().isNotEmpty) {
+          return city.trim();
+        }
+      }
+    } catch (e) {
+      debugPrint('Nominatim reverse geocode error: $e');
+    }
+
+    return 'Current Location';
   }
 
   void _parseFromExternalMap(Map<String, dynamic> data) {
@@ -397,10 +570,13 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
             ];
 
       setState(() {
+        _currentLat = (data['latitude'] as num?)?.toDouble() ?? _currentLat;
+        _currentLon = (data['longitude'] as num?)?.toDouble() ?? _currentLon;
+        _currentLocationName = data['location_name']?.toString() ?? _currentLocationName;
         _weatherData = LiveWeatherData(
-          locationName: data['location_name']?.toString() ?? _currentLocationName,
-          latitude: (data['latitude'] as num?)?.toDouble() ?? _currentLat,
-          longitude: (data['longitude'] as num?)?.toDouble() ?? _currentLon,
+          locationName: _currentLocationName,
+          latitude: _currentLat,
+          longitude: _currentLon,
           temperature: temp,
           apparentTemperature: apparent,
           humidity: hum,
@@ -433,7 +609,7 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      _fetchLiveWeather(lat: _currentLat, lon: _currentLon, name: _currentLocationName);
+      _resolveCurrentLocation();
     }
   }
 
@@ -466,44 +642,24 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
   }
 
   Future<void> _fetchLiveWeather({double? lat, double? lon, String? name}) async {
+    if (lat == null && lon == null) {
+      await _resolveCurrentLocation();
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      double targetLat = lat ?? _currentLat;
-      double targetLon = lon ?? _currentLon;
+      final double targetLat = lat!;
+      final double targetLon = lon!;
       String locationName = name ?? _currentLocationName;
 
       // Reverse geocode if location name is empty or default
-      if (name == null && lat == null) {
-        try {
-          final pos = await LocationService.getCurrentPosition();
-          if (pos != null) {
-            targetLat = pos.latitude;
-            targetLon = pos.longitude;
-          }
-        } catch (_) {}
-
-        try {
-          final geoResponse = await _dio.get(
-            'https://api.bigdatacloud.net/data/reverse-geocode-client',
-            queryParameters: {
-              'latitude': targetLat,
-              'longitude': targetLon,
-              'localityLanguage': 'en',
-            },
-            options: Options(receiveTimeout: const Duration(seconds: 4)),
-          );
-          if (geoResponse.statusCode == 200 && geoResponse.data is Map) {
-            final data = geoResponse.data as Map;
-            final city = data['city'] ?? data['locality'] ?? data['principalSubdivision'] ?? '';
-            if (city.toString().isNotEmpty) {
-              locationName = city.toString();
-            }
-          }
-        } catch (_) {}
+      if (name == null || name.isEmpty || name == 'Current Location' || name == 'Locating...') {
+        locationName = await _reverseGeocode(targetLat, targetLon);
       }
 
       // Fetch Open-Meteo live weather
@@ -695,6 +851,50 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
           );
           _isLoading = false;
         });
+
+        // Persist to OfflineWeatherCache for instant offline availability
+        try {
+          final cachePayload = {
+            'location_name': locationName,
+            'latitude': targetLat,
+            'longitude': targetLon,
+            'temperature': (wCurrent['temperature_2m'] as num?)?.toDouble() ?? 21.0,
+            'apparent_temperature': (wCurrent['apparent_temperature'] as num?)?.toDouble() ?? 19.0,
+            'humidity': (wCurrent['relative_humidity_2m'] as num?)?.toInt() ?? 44,
+            'precipitation': (wCurrent['precipitation'] as num?)?.toDouble() ?? 0.0,
+            'wind_speed': (wCurrent['wind_speed_10m'] as num?)?.toDouble() ?? 14.9,
+            'wind_direction': (wCurrent['wind_direction_10m'] as num?)?.toInt() ?? 0,
+            'wind_gusts': (wCurrent['wind_gusts_10m'] as num?)?.toDouble() ?? 18.0,
+            'pressure': (wCurrent['surface_pressure'] as num?)?.toDouble() ?? 1013.0,
+            'uv_index': (wCurrent['uv_index'] as num?)?.toDouble() ?? 0.0,
+            'weather_code': (wCurrent['weather_code'] as num?)?.toInt() ?? 0,
+            'is_day': (wCurrent['is_day'] as num?)?.toInt() == 1,
+            'sunrise': sunriseFormatted,
+            'sunset': sunsetFormatted,
+            'temp_max': (wDaily['temperature_2m_max'] is List && wDaily['temperature_2m_max'].isNotEmpty)
+                ? (wDaily['temperature_2m_max'][0] as num).toDouble()
+                : 28.0,
+            'temp_min': (wDaily['temperature_2m_min'] is List && wDaily['temperature_2m_min'].isNotEmpty)
+                ? (wDaily['temperature_2m_min'][0] as num).toDouble()
+                : 14.0,
+            'aqi': (aqiData?['us_aqi'] as num?)?.toInt() ?? 106,
+            'pm2_5': (aqiData?['pm2_5'] as num?)?.toDouble() ?? 38.0,
+            'pm10': (aqiData?['pm10'] as num?)?.toDouble() ?? 72.0,
+            'rain_chance': rainChance,
+            'is_weathernext_primary': true,
+            'hourly': hourlyList.map((h) => {
+              'time': h.time,
+              'temp': h.temp,
+              'weather_code': h.weatherCode,
+              'humidity': h.humidity,
+              'wind_speed': h.windSpeed,
+              'is_day': h.isDay,
+            }).toList(),
+          };
+          OfflineWeatherCache.instance.saveTelemetry(cachePayload);
+        } catch (e) {
+          debugPrint('Error caching live weather: $e');
+        }
       }
     } catch (e) {
       // Gracefully attempt to load from local offline telemetry cache
@@ -730,6 +930,10 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
         onSelectCity: (name, lat, lon) {
           Navigator.pop(ctx);
           _fetchLiveWeather(lat: lat, lon: lon, name: name);
+        },
+        onSelectCurrentLocation: () {
+          Navigator.pop(ctx);
+          _resolveCurrentLocation();
         },
       ),
     );
@@ -972,7 +1176,9 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
             color: _isDay ? const Color(0xFF287DE9) : const Color(0xFF143B77),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             onSelected: (val) {
-              if (val == 'refresh') {
+              if (val == 'current_location') {
+                _resolveCurrentLocation();
+              } else if (val == 'refresh') {
                 _fetchLiveWeather(lat: _currentLat, lon: _currentLon, name: _currentLocationName);
               } else if (val == 'search') {
                 _showCitySearchSheet();
@@ -1019,6 +1225,22 @@ class _LiveWeatherScreenState extends State<LiveWeatherScreen> {
               }
             },
             itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'current_location',
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.my_location_rounded, color: Colors.white, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Use Current Location',
+                        style: TextStyle(color: Colors.white, fontSize: 14),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'refresh',
                 child: Row(
@@ -1996,9 +2218,11 @@ class _StarFieldPainter extends CustomPainter {
 class _CitySearchSheet extends StatefulWidget {
   final bool isDay;
   final void Function(String name, double lat, double lon) onSelectCity;
+  final VoidCallback? onSelectCurrentLocation;
 
   const _CitySearchSheet({
     required this.onSelectCity,
+    this.onSelectCurrentLocation,
     this.isDay = false,
   });
 
@@ -2071,14 +2295,13 @@ class _CitySearchSheetState extends State<_CitySearchSheet> {
   Widget build(BuildContext context) {
     final list = _searchResults.isNotEmpty ? _searchResults : _popularCities;
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.75,
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-      decoration: BoxDecoration(
-        color: widget.isDay ? const Color(0xFF2473DE) : const Color(0xFF0C244F),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: Column(
+    return Material(
+      color: widget.isDay ? const Color(0xFF2473DE) : const Color(0xFF0C244F),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.75,
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Drag handle
@@ -2126,6 +2349,31 @@ class _CitySearchSheetState extends State<_CitySearchSheet> {
           ),
           const SizedBox(height: 20),
 
+          if (_searchResults.isEmpty && widget.onSelectCurrentLocation != null) ...[
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.16),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.my_location_rounded, color: Colors.white, size: 20),
+              ),
+              title: const Text(
+                'Use Current Location',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15),
+              ),
+              subtitle: Text(
+                'Auto-detect via GPS / Network',
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 12),
+              ),
+              onTap: widget.onSelectCurrentLocation,
+            ),
+            Divider(color: Colors.white.withValues(alpha: 0.12), height: 16),
+          ],
+
           Text(
             _searchResults.isNotEmpty ? 'Search Results' : 'Popular Cities',
             style: TextStyle(
@@ -2166,6 +2414,7 @@ class _CitySearchSheetState extends State<_CitySearchSheet> {
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 }

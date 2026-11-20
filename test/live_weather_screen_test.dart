@@ -174,5 +174,46 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Switch to Day View'), findsOneWidget);
     });
+
+    testWidgets('LiveWeatherScreen provides Use Current Location option in search sheet and menu', (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final mockWeatherData = {
+        'location_name': 'Bengaluru Central',
+        'latitude': 12.9716,
+        'longitude': 77.5946,
+        'temperature': 24.0,
+        'is_day': true,
+      };
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LiveWeatherScreen(
+            initialWeatherData: mockWeatherData,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Location name is loaded from current data
+      expect(find.text('Bengaluru Central'), findsOneWidget);
+
+      // Verify PopupMenu has "Use Current Location"
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      expect(find.text('Use Current Location'), findsOneWidget);
+      // Close popup menu by tapping outside
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      // Open Search Sheet and verify "Use Current Location" quick action tile
+      await tester.tap(find.byIcon(Icons.add));
+      await tester.pumpAndSettle();
+      expect(find.text('Use Current Location'), findsOneWidget);
+      expect(find.text('Auto-detect via GPS / Network'), findsOneWidget);
+    });
   });
 }
