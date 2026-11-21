@@ -1,7 +1,6 @@
 import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'features/chat/screens/chat_screen.dart';
@@ -12,6 +11,7 @@ import 'features/map/screens/map_screen.dart';
 import 'features/weather/screens/live_weather_screen.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'core/localization/locale_service.dart';
+import 'core/theme/premium_theme.dart';
 import 'core/api/weather_api_client.dart';
 import 'core/ai/offline_edge_ai_service.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -59,21 +59,7 @@ class WeatherGptApp extends StatelessWidget {
     return MaterialApp(
       title: 'Weather GPT',
       scrollBehavior: AppScrollBehavior(),
-      theme: ThemeData(
-        scaffoldBackgroundColor: const Color(0xFFF7F7F7),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1C1C1E),
-          surface: const Color(0xFFF7F7F7),
-        ),
-        pageTransitionsTheme: PageTransitionsTheme(
-          builders: {
-            TargetPlatform.android: const CupertinoPageTransitionsBuilder(),
-            TargetPlatform.iOS: const CupertinoPageTransitionsBuilder(),
-            TargetPlatform.windows: const CupertinoPageTransitionsBuilder(),
-          },
-        ),
-        useMaterial3: true,
-      ),
+      theme: PremiumTheme.themeData(),
       home: const WeatherGptScreen(),
       debugShowCheckedModeBanner: false,
     );
@@ -119,7 +105,7 @@ class _WeatherGptScreenState extends State<WeatherGptScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7F7),
+      backgroundColor: PremiumColors.mist,
       body: PopScope(
         canPop: _currentPage == 1,
         onPopInvokedWithResult: (didPop, result) {
@@ -172,22 +158,23 @@ class _WeatherGptScreenState extends State<WeatherGptScreen> {
       );
     }
 
-    return Container(
-      color: const Color(0xFFF7F7F7),
-      child: SafeArea(
-        child: Column(
-          children: [
-            // Top Navigation Bar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Profile Button (slides from left to right)
-                  _CircularIconButton(
-                    icon: Icons.person_outline_rounded,
-                    onPressed: () => _goToPage(0),
-                  ),
+    return Stack(
+      children: [
+        const AuroraBackground(),
+        SafeArea(
+          child: Column(
+            children: [
+              // Top Navigation Bar
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Profile Button (slides from left to right)
+                    PremiumIconButton(
+                      icon: Icons.person_outline_rounded,
+                      onPressed: () => _goToPage(0),
+                    ),
 
                   // Search / Map Mode Toggle
                   _SegmentedToggle(
@@ -229,45 +216,124 @@ class _WeatherGptScreenState extends State<WeatherGptScreen> {
             Expanded(
               child: Center(
                 child: Padding(
-                  padding: const EdgeInsets.only(bottom: 40),
+                  padding: const EdgeInsets.only(bottom: 24),
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 250),
                     child: _isIncognito
-                        ? Column(
-                            key: const ValueKey('incognito_hero'),
+                        ? const Column(
+                            key: ValueKey('incognito_hero'),
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Text(
+                              Text(
                                 'Incognito mode',
                                 style: TextStyle(
-                                  fontFamily: 'serif',
                                   fontSize: 36,
-                                  fontWeight: FontWeight.w500,
-                                  color: Color(0xFF555555),
-                                  letterSpacing: -0.3,
+                                  fontWeight: FontWeight.w800,
+                                  color: PremiumColors.ink,
+                                  letterSpacing: -0.8,
                                 ),
                               ),
-                              const SizedBox(height: 8),
-                              const Text(
+                              SizedBox(height: 8),
+                              Text(
                                 'Your chat will not be stored',
                                 style: TextStyle(
                                   fontSize: 14,
-                                  color: Color(0xFF888888),
-                                  letterSpacing: -0.1,
+                                  color: PremiumColors.slate,
                                 ),
                               ),
                             ],
                           )
-                        : const Text(
-                            'Weather GPT',
-                            key: ValueKey('weathergpt_hero'),
-                            style: TextStyle(
-                              fontFamily: 'serif',
-                              fontSize: 36,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFF555555),
-                              letterSpacing: -0.3,
-                            ),
+                        : Column(
+                            key: const ValueKey('weathergpt_hero'),
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'CONVERSATIONAL WEATHER AI',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 2.2,
+                                  color: PremiumColors.teal,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              RichText(
+                                textAlign: TextAlign.center,
+                                text: const TextSpan(
+                                  style: TextStyle(
+                                    fontSize: 46,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -1.2,
+                                    height: 1.05,
+                                    color: PremiumColors.ink,
+                                  ),
+                                  children: [
+                                    TextSpan(text: 'Weather\n'),
+                                    TextSpan(
+                                      text: 'GPT',
+                                      style: TextStyle(
+                                        color: PremiumColors.teal,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              const Text(
+                                'Hyper-local forecasts, in your language —\neven when you are offline.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  height: 1.5,
+                                  color: PremiumColors.slate,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              Wrap(
+                                alignment: WrapAlignment.center,
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  PremiumActionChip(
+                                    icon: Icons.water_drop_rounded,
+                                    label: 'Will it rain?',
+                                    onTap: () => Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => ChatScreen(
+                                          initialQuery: 'Will it rain today?',
+                                          isIncognito: _isIncognito,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  PremiumActionChip(
+                                    icon: Icons.eco_rounded,
+                                    label: 'Sowing advice',
+                                    onTap: () => Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => ChatScreen(
+                                          initialQuery:
+                                              'Is today good for sowing?',
+                                          isIncognito: _isIncognito,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  PremiumActionChip(
+                                    icon: Icons.map_rounded,
+                                    label: 'Radar map',
+                                    onTap: () => setState(() {
+                                      _selectedToggleIndex = 1;
+                                    }),
+                                  ),
+                                  PremiumActionChip(
+                                    icon: Icons.article_rounded,
+                                    label: 'Weather news',
+                                    onTap: () => _goToPage(2),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                   ),
                 ),
@@ -290,6 +356,7 @@ class _WeatherGptScreenState extends State<WeatherGptScreen> {
           ],
         ),
       ),
+    ],
     );
   }
 }
@@ -306,35 +373,7 @@ class _CircularIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 44,
-      height: 44,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(22),
-          onTap: onPressed,
-          child: Center(
-            child: Icon(
-              icon,
-              size: 22,
-              color: const Color(0xFF1C1C1E),
-            ),
-          ),
-        ),
-      ),
-    );
+    return PremiumIconButton(icon: icon, onPressed: onPressed);
   }
 }
 
@@ -355,8 +394,16 @@ class _SegmentedToggle extends StatelessWidget {
       height: 48,
       padding: const EdgeInsets.all(5),
       decoration: BoxDecoration(
-        color: const Color(0xFFEFEFEF),
+        color: Colors.white.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: PremiumColors.line),
+        boxShadow: [
+          BoxShadow(
+            color: PremiumColors.ink.withValues(alpha: 0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
         children: [
@@ -400,14 +447,15 @@ class _ToggleOption extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeInOut,
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white : Colors.transparent,
+          gradient: isSelected ? PremiumColors.accentGradient : null,
+          color: isSelected ? null : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+                    color: PremiumColors.sky.withValues(alpha: 0.35),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
                   ),
                 ]
               : null,
@@ -416,7 +464,7 @@ class _ToggleOption extends StatelessWidget {
           child: Icon(
             icon,
             size: 19,
-            color: const Color(0xFF1C1C1E),
+            color: isSelected ? Colors.white : PremiumColors.ink,
           ),
         ),
       ),
@@ -525,13 +573,14 @@ class _ChatInputCardState extends State<_ChatInputCard> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Colors.white.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.white),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
+            color: PremiumColors.ink.withValues(alpha: 0.1),
             blurRadius: 30,
-            offset: const Offset(0, 10),
+            offset: const Offset(0, 12),
           ),
         ],
       ),
@@ -640,7 +689,7 @@ class _ChatInputCardState extends State<_ChatInputCard> {
                         width: 36,
                         height: 36,
                         decoration: const BoxDecoration(
-                          color: Color(0xFF212121),
+                          gradient: PremiumColors.accentGradient,
                           shape: BoxShape.circle,
                         ),
                         child: Material(

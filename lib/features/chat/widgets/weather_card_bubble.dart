@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/theme/premium_theme.dart';
 import 'weather_map_bubble.dart';
 import '../services/weather_share_service.dart';
 import '../../weather/screens/live_weather_screen.dart';
@@ -95,19 +96,28 @@ class _WeatherCardBubbleState extends State<WeatherCardBubble> {
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFEBEBEB), width: 1),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: PremiumColors.line, width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            offset: const Offset(0, 4),
-            blurRadius: 14,
+            color: PremiumColors.ink.withValues(alpha: 0.07),
+            offset: const Offset(0, 8),
+            blurRadius: 24,
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Premium gradient accent bar
+            Container(
+              height: 4,
+              decoration: const BoxDecoration(
+                gradient: PremiumColors.accentGradient,
+              ),
+            ),
           // Header: Location & Live Tag
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
@@ -477,6 +487,7 @@ class _WeatherCardBubbleState extends State<WeatherCardBubble> {
           ),
         ],
       ),
+        ),
     );
   }
 

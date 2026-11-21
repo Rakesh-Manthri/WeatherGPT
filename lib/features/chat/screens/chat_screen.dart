@@ -6,6 +6,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/api/weather_api_client.dart';
+import '../../../core/theme/premium_theme.dart';
 import '../../../core/ai/offline_edge_ai_service.dart';
 import '../../../core/cache/local_chat_store.dart';
 import '../../../core/location/location_service.dart';
@@ -513,7 +514,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7F7),
+      backgroundColor: PremiumColors.mist,
       body: SafeArea(
         child: Column(
           children: [
@@ -643,13 +644,21 @@ class _ChatScreenState extends State<ChatScreen> {
                             width: 68,
                             height: 68,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE8F1FC),
+                              gradient: PremiumColors.accentGradient,
                               borderRadius: BorderRadius.circular(22),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: PremiumColors.sky
+                                      .withValues(alpha: 0.35),
+                                  blurRadius: 18,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
                             ),
                             child: const Icon(
                               Icons.cloud_outlined,
                               size: 34,
-                              color: Color(0xFF1A73E8),
+                              color: Colors.white,
                             ),
                           ),
                           const SizedBox(height: 18),
@@ -747,8 +756,9 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFFF7F7F7),
+                color: PremiumColors.mist,
                 borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: PremiumColors.line),
               ),
               child: TextField(
                 controller: _textController,
@@ -808,7 +818,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 width: 40,
                 height: 40,
                 decoration: const BoxDecoration(
-                  color: Color(0xFF1C1C1E),
+                  gradient: PremiumColors.accentGradient,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -833,31 +843,7 @@ class _ChatCircularIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 44,
-      height: 44,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(22),
-          onTap: onPressed,
-          child: Center(
-            child: Icon(icon, size: 20, color: const Color(0xFF1C1C1E)),
-          ),
-        ),
-      ),
-    );
+    return PremiumIconButton(icon: icon, onPressed: onPressed);
   }
 }
 
@@ -929,14 +915,15 @@ class _ChatToggleOption extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeInOut,
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF1C1C1E) : Colors.transparent,
+          gradient: isSelected ? PremiumColors.accentGradient : null,
+          color: isSelected ? null : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Center(
           child: Icon(
             icon,
             size: 19,
-            color: isSelected ? Colors.white : const Color(0xFF1C1C1E),
+            color: isSelected ? Colors.white : PremiumColors.ink,
           ),
         ),
       ),
